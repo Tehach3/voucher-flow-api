@@ -14,7 +14,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiTags,
-  ApiBearerAuth,
+  ApiSecurity,
   ApiOperation,
   ApiOkResponse,
   ApiCreatedResponse,
@@ -27,11 +27,12 @@ import {
 import { EventosService } from './eventos.service';
 import { CrearEventoDto } from '../../common/dtos/crear-evento.dto';
 import { ActualizarEventoDto } from '../../common/dtos/actualizar-evento.dto';
+import { FiltrarEventosDto } from '../../common/dtos/filtrar-eventos.dto';
 import { PaginationDto } from '../../common/dtos/pagination.dto';
 import { ApiKeyGuard } from '../../common/guards/api-key.guard';
 
 @ApiTags('eventos')
-@ApiBearerAuth('api-key')
+@ApiSecurity('x-api-key')
 @ApiUnauthorizedResponse({ description: 'API Key inválida o ausente' })
 @Controller('eventos')
 @UseGuards(ApiKeyGuard)
@@ -47,11 +48,20 @@ export class EventosController {
     return this.eventosService.findAll(pagination);
   }
 
-  @Get('abiertos')
-  @ApiOperation({ summary: 'Listar eventos en estado abierto' })
-  @ApiOkResponse({ description: 'Eventos disponibles para recibir facturas' })
-  findAbiertos() {
-    return this.eventosService.findAbiertos();
+  @Get('disponibles')
+  @ApiOperation({
+    summary: 'Listar eventos con disponibilidad calculada',
+    description:
+      'Retorna eventos activos con el campo `disponibilidad` calculado en base a las fechas: ' +
+      '`disponible` (fecha actual entre fechaInicio y fechaCierre), ' +
+      '`noIniciado` (fecha actual antes de fechaInicio), ' +
+      '`vencido` (fecha actual después de fechaCierre). ' +
+      'Sin filtros retorna solo los eventos en estado `abierto`.',
+  })
+  @ApiQuery({ name: 'estado', required: false, enum: ['abierto', 'cerrado', 'pausado', 'finalizado'] })
+  @ApiOkResponse({ description: 'Eventos con disponibilidad calculada' })
+  findDisponibles(@Query() filtros: FiltrarEventosDto) {
+    return this.eventosService.findAbiertos(filtros);
   }
 
   @Get(':id')
@@ -87,7 +97,7 @@ export class EventosController {
 
   @Patch(':id/cerrar')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Cerrar un evento (llama a cerrar_evento() en DB)' })
+  @ApiOperation({ summary: 'Cerrar un evento' })
   @ApiParam({ name: 'id', type: Number, example: 1 })
   @ApiOkResponse({ description: 'Evento cerrado' })
   @ApiNotFoundResponse({ description: 'Evento no encontrado' })

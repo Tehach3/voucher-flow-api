@@ -27,10 +27,10 @@ export class ActualizarEventoDto {
   @IsString()
   descripcion?: string;
 
-  @ApiPropertyOptional({ example: '2027-01-31T23:59:59Z' })
+  @ApiPropertyOptional({ example: '2027-01-31T23:59:59Z', description: 'Fecha de cierre del evento' })
   @IsOptional()
   @IsDateString()
-  fechaVencimiento?: string;
+  fechaCierre?: string;
 
   @ApiPropertyOptional({ example: '2026-06-01T00:00:00Z' })
   @IsOptional()

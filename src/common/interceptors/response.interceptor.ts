@@ -3,9 +3,10 @@ import {
   NestInterceptor,
   ExecutionContext,
   CallHandler,
+  NotFoundException,
 } from '@nestjs/common';
-import { Observable } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { Observable, throwError, of } from 'rxjs';
+import { switchMap } from 'rxjs/operators';
 
 export interface ApiResponse<T> {
   success: boolean;
@@ -22,11 +23,34 @@ export class ResponseInterceptor<T>
     next: CallHandler<T>,
   ): Observable<ApiResponse<T>> {
     return next.handle().pipe(
-      map((data) => ({
-        success: true,
-        data,
-        timestamp: new Date().toISOString(),
-      })),
+      switchMap((data) => {
+        if (this.isEmpty(data)) {
+          return throwError(() => new NotFoundException('Recurso no encontrado'));
+        }
+
+        return of({
+          success: true,
+          data,
+          timestamp: new Date().toISOString(),
+        });
+      }),
     );
+  }
+
+  private isEmpty(data: unknown): boolean {
+    if (data === null || data === undefined) return true;
+
+    if (Array.isArray(data)) return data.length === 0;
+
+    // Respuesta paginada: { data: [], total: 0, ... }
+    if (
+      typeof data === 'object' &&
+      'data' in data &&
+      Array.isArray((data as Record<string, unknown>)['data'])
+    ) {
+      return ((data as Record<string, unknown>)['data'] as unknown[]).length === 0;
+    }
+
+    return false;
   }
 }

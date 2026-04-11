@@ -1,13 +1,14 @@
 import { EstadoEvento, CondicionCupon, Premio } from '../../modules/eventos/entities/evento.entity';
 
+export type DisponibilidadEvento = 'disponible' | 'noIniciado' | 'vencido';
+
 export interface IEvento {
   id: number;
   nombre: string;
   descripcion: string | null;
   estado: EstadoEvento;
   fechaInicio: Date;
-  fechaVencimiento: Date;
-  fechaCierre: Date | null;
+  fechaCierre: Date;
   requireValidacionCupones: boolean;
   cuponesMinimos: number;
   tieneCondicionesMultiples: boolean;
@@ -24,13 +25,23 @@ export interface IEventoPublico {
   nombre: string;
   descripcion: string | null;
   estado: EstadoEvento;
+  disponibilidad: DisponibilidadEvento;
   fechaInicio: Date;
-  fechaVencimiento: Date;
+  fechaCierre: Date;
   cuponesMinimos: number;
   tieneCondicionesMultiples: boolean;
   condicionesCupones: CondicionCupon[] | null;
   premios: Premio[] | null;
   imagenUrl: string | null;
+}
+
+export interface IEventoCreado {
+  mensaje: string;
+  nombre: string;
+  fechaInicio: Date;
+  fechaCierre: Date;
+  imagenUrl: string | null;
+  fechaRegistro: Date;
 }
 
 export interface EventosPaginados {
