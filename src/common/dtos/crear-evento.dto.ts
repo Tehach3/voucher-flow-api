@@ -45,9 +45,9 @@ export class CrearEventoDto {
   @Length(2, 255)
   nombre: string;
 
-  @ApiProperty({ example: '2026-12-31T23:59:59Z', description: 'Fecha límite para participar' })
+  @ApiProperty({ example: '2026-12-31T23:59:59Z', description: 'Fecha de cierre del evento' })
   @IsDateString()
-  fechaVencimiento: string;
+  fechaCierre: string;
 
   @ApiProperty({ example: '2026-06-01T00:00:00Z', description: 'Fecha de inicio del evento' })
   @IsDateString()

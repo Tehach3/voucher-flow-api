@@ -27,7 +27,6 @@ CREATE TABLE IF NOT EXISTS eventos (
     CHECK (estado IN ('abierto', 'cerrado', 'pausado', 'finalizado')),
   fecha_inicio TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
   fecha_vencimiento TIMESTAMP WITH TIME ZONE NOT NULL,
-  fecha_cierre TIMESTAMP WITH TIME ZONE,
   require_validacion_cupones BOOLEAN NOT NULL DEFAULT TRUE,
   cupones_minimos INTEGER NOT NULL DEFAULT 1 CHECK (cupones_minimos >= 1),
   tiene_condiciones_multiples BOOLEAN NOT NULL DEFAULT FALSE,
@@ -47,7 +46,7 @@ CREATE INDEX IF NOT EXISTS idx_eventos_fecha_inicio ON eventos(fecha_inicio DESC
 
 COMMENT ON TABLE eventos IS 'Tabla de eventos/campañas de sorteo';
 COMMENT ON COLUMN eventos.estado IS 'Estado del evento: abierto, cerrado, pausado, finalizado';
-COMMENT ON COLUMN eventos.fecha_vencimiento IS 'Fecha límite para participar en el evento';
+COMMENT ON COLUMN eventos.fecha_vencimiento IS 'Fecha de cierre/vencimiento del evento (límite para participar)';
 COMMENT ON COLUMN eventos.require_validacion_cupones IS 'Siempre TRUE: se valida cupones_minimos para toda participación';
 COMMENT ON COLUMN eventos.cupones_minimos IS 'Mínimo de cupones requeridos para participar (obligatorio, mínimo 1)';
 COMMENT ON COLUMN eventos.tiene_condiciones_multiples IS 'TRUE si el evento tiene múltiples condiciones de generación de cupones (por SKU/peso). FALSE = genera 1 cupón por compra.';
@@ -317,7 +316,6 @@ RETURNS VOID AS $$
 BEGIN
   UPDATE eventos
   SET estado = 'cerrado',
-      fecha_cierre = CURRENT_TIMESTAMP,
       fecha_actualizacion = CURRENT_TIMESTAMP
   WHERE id = p_evento_id;
 END;

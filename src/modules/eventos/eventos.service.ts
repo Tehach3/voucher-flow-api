@@ -9,8 +9,15 @@ import { Repository, DataSource } from 'typeorm';
 import { EventoEntity } from './entities/evento.entity';
 import { CrearEventoDto } from '../../common/dtos/crear-evento.dto';
 import { ActualizarEventoDto } from '../../common/dtos/actualizar-evento.dto';
+import { FiltrarEventosDto } from '../../common/dtos/filtrar-eventos.dto';
 import { PaginationDto } from '../../common/dtos/pagination.dto';
-import { IEvento, IEventoPublico, EventosPaginados } from '../../common/interfaces/evento.interface';
+import {
+  IEvento,
+  IEventoCreado,
+  IEventoPublico,
+  EventosPaginados,
+  DisponibilidadEvento,
+} from '../../common/interfaces/evento.interface';
 
 @Injectable()
 export class EventosService {
@@ -37,10 +44,18 @@ export class EventosService {
     };
   }
 
-  async findAbiertos(): Promise<IEventoPublico[]> {
+  async findAbiertos(filtros: FiltrarEventosDto): Promise<IEventoPublico[]> {
+    const where: Record<string, unknown> = { activo: true };
+
+    if (filtros.estado) {
+      where.estado = filtros.estado;
+    } else {
+      where.estado = 'abierto';
+    }
+
     const eventos = await this.eventosRepository.find({
-      where: { estado: 'abierto', activo: true },
-      order: { fechaVencimiento: 'ASC' },
+      where,
+      order: { fechaCierre: 'ASC' },
     });
 
     return eventos.map(this.toPublico);
@@ -56,7 +71,7 @@ export class EventosService {
     return evento;
   }
 
-  async create(dto: CrearEventoDto): Promise<IEvento> {
+  async create(dto: CrearEventoDto): Promise<IEventoCreado> {
     const tieneCondiciones = dto.tieneCondicionesMultiples ?? false;
 
     this.validarCondicionesCupones(tieneCondiciones, dto.condicionesCupones);
@@ -65,7 +80,7 @@ export class EventosService {
       nombre: dto.nombre,
       descripcion: dto.descripcion ?? null,
       fechaInicio: new Date(dto.fechaInicio),
-      fechaVencimiento: new Date(dto.fechaVencimiento),
+      fechaCierre: new Date(dto.fechaCierre),
       requireValidacionCupones: true,
       cuponesMinimos: dto.cuponesMinimos,
       tieneCondicionesMultiples: tieneCondiciones,
@@ -78,7 +93,15 @@ export class EventosService {
     this.logger.log(
       `[EVENTOS] Evento creado: id=${saved.id} nombre="${saved.nombre}" condicionesMultiples=${tieneCondiciones}`,
     );
-    return saved;
+
+    return {
+      mensaje: 'Evento registrado correctamente',
+      nombre: saved.nombre,
+      fechaInicio: saved.fechaInicio,
+      fechaCierre: saved.fechaCierre,
+      imagenUrl: saved.imagenUrl,
+      fechaRegistro: saved.fechaRegistro,
+    };
   }
 
   async update(id: number, dto: ActualizarEventoDto): Promise<IEvento> {
@@ -103,7 +126,7 @@ export class EventosService {
 
     if (dto.nombre !== undefined) evento.nombre = dto.nombre;
     if (dto.descripcion !== undefined) evento.descripcion = dto.descripcion;
-    if (dto.fechaVencimiento !== undefined) evento.fechaVencimiento = new Date(dto.fechaVencimiento);
+    if (dto.fechaCierre !== undefined) evento.fechaCierre = new Date(dto.fechaCierre);
     if (dto.fechaInicio !== undefined) evento.fechaInicio = new Date(dto.fechaInicio);
     if (dto.cuponesMinimos !== undefined) evento.cuponesMinimos = dto.cuponesMinimos;
     if (dto.tieneCondicionesMultiples !== undefined) evento.tieneCondicionesMultiples = dto.tieneCondicionesMultiples;
@@ -134,6 +157,13 @@ export class EventosService {
     return cerrado!;
   }
 
+  private calcularDisponibilidad(evento: EventoEntity): DisponibilidadEvento {
+    const now = new Date();
+    if (now < evento.fechaInicio) return 'noIniciado';
+    if (now > evento.fechaCierre) return 'vencido';
+    return 'disponible';
+  }
+
   private validarCondicionesCupones(
     tieneCondicionesMultiples: boolean,
     condicionesCupones: Array<{ sku: string; cuponesPorUnidad: number }> | undefined,
@@ -153,19 +183,20 @@ export class EventosService {
     }
   }
 
-  private toPublico(evento: EventoEntity): IEventoPublico {
+  private toPublico = (evento: EventoEntity): IEventoPublico => {
     return {
       id: evento.id,
       nombre: evento.nombre,
       descripcion: evento.descripcion,
       estado: evento.estado,
+      disponibilidad: this.calcularDisponibilidad(evento),
       fechaInicio: evento.fechaInicio,
-      fechaVencimiento: evento.fechaVencimiento,
+      fechaCierre: evento.fechaCierre,
       cuponesMinimos: evento.cuponesMinimos,
       tieneCondicionesMultiples: evento.tieneCondicionesMultiples,
       condicionesCupones: evento.condicionesCupones,
       premios: evento.premios,
       imagenUrl: evento.imagenUrl,
     };
-  }
+  };
 }

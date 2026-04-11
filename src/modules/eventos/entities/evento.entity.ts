@@ -36,10 +36,7 @@ export class EventoEntity {
   fechaInicio: Date;
 
   @Column({ name: 'fecha_vencimiento', type: 'timestamptz' })
-  fechaVencimiento: Date;
-
-  @Column({ name: 'fecha_cierre', type: 'timestamptz', nullable: true })
-  fechaCierre: Date | null;
+  fechaCierre: Date;
 
   @Column({ name: 'require_validacion_cupones', type: 'boolean', default: true })
   requireValidacionCupones: boolean;
