@@ -1,0 +1,28 @@
+export const ERROR_CODES = {
+  // Auth
+  MISSING_AUTH_HEADER: 'AUTH_001',
+  INVALID_AUTH_FORMAT: 'AUTH_002',
+  INVALID_API_KEY: 'AUTH_003',
+
+  // Usuarios
+  USUARIO_NOT_FOUND: 'USR_001',
+  USUARIO_ALREADY_EXISTS: 'USR_002',
+
+  // Facturas
+  FACTURA_ALREADY_EXISTS: 'FAC_001',
+  FACTURA_NOT_FOUND: 'FAC_002',
+  INVALID_SKU: 'FAC_003',
+
+  // Imagenes
+  INVALID_FILE_TYPE: 'IMG_001',
+  FILE_TOO_LARGE: 'IMG_002',
+  UPLOAD_FAILED: 'IMG_003',
+
+  // Validación
+  VALIDATION_ERROR: 'VAL_001',
+
+  // Servidor
+  INTERNAL_ERROR: 'SRV_001',
+} as const;
+
+export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
