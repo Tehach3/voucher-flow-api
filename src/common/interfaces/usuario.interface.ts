@@ -4,7 +4,8 @@ export interface IUsuario {
   nombre: string;
   celular: string | null;
   ciudad: string | null;
-  cupones_acumulados: number;
+  email: string | null;
+  activo: boolean;
   fecha_registro: Date;
   fecha_actualizacion: Date;
 }
@@ -14,5 +15,5 @@ export interface IUsuarioPublico {
   nombre: string;
   celular: string | null;
   ciudad: string | null;
-  cupones_acumulados: number;
+  email: string | null;
 }

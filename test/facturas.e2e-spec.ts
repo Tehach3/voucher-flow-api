@@ -13,7 +13,7 @@ const FAKE_JPEG = Buffer.from([
 
 const mockFacturasService = {
   cargarFactura: jest.fn(),
-  getCuponesByCedula: jest.fn(),
+  getCuponesByCedulaEvento: jest.fn(),
   getFacturaById: jest.fn(),
 };
 
@@ -52,6 +52,7 @@ describe('FacturasController (e2e)', () => {
     const validBody = {
       cedula: '12345678',
       nombre: 'Juan Perez',
+      evento_id: '1',
       numero_factura: 'FAC-001',
       sku: '1kg',
       cantidad: '2',
@@ -61,6 +62,7 @@ describe('FacturasController (e2e)', () => {
       const serviceResponse = {
         success: true,
         cedula: '12345678',
+        evento_id: 1,
         cupones_generados: 10,
         cupones_totales: 20,
         foto_url: 'http://stub/foto.jpg',
@@ -133,24 +135,26 @@ describe('FacturasController (e2e)', () => {
     });
   });
 
-  // ── GET /api/facturas/:cedula ─────────────────────────────────────────────
+  // ── GET /api/facturas/:cedula/evento/:eventoId ────────────────────────────
 
-  describe('GET /api/facturas/:cedula', () => {
-    it('retorna cupones y facturas del usuario', async () => {
+  describe('GET /api/facturas/:cedula/evento/:eventoId', () => {
+    it('retorna cupones y facturas del usuario en el evento', async () => {
       const mockResponse = {
         cedula: '12345678',
+        evento_id: 1,
         cupones_acumulados: 10,
         total_facturas: 1,
         facturas: [],
       };
-      mockFacturasService.getCuponesByCedula.mockResolvedValue(mockResponse);
+      mockFacturasService.getCuponesByCedulaEvento.mockResolvedValue(mockResponse);
 
       const res = await request(app.getHttpServer())
-        .get('/api/facturas/12345678')
+        .get('/api/facturas/12345678/evento/1')
         .set(authHeader())
         .expect(200);
 
       expect(res.body.cedula).toBe('12345678');
+      expect(res.body.evento_id).toBe(1);
       expect(res.body.cupones_acumulados).toBe(10);
     });
   });

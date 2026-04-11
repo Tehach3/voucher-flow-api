@@ -8,6 +8,8 @@ import {
   Index,
 } from 'typeorm';
 import { UsuarioEntity } from '../../usuarios/entities/usuario.entity';
+import { EventoEntity } from '../../eventos/entities/evento.entity';
+import { ParticipacionEventoEntity } from '../../participaciones/entities/participacion-evento.entity';
 
 export interface OcrData {
   numero_factura: string | null;
@@ -18,7 +20,7 @@ export interface OcrData {
 }
 
 @Entity('facturas')
-@Index(['usuario_id', 'numero_factura'], { unique: true })
+@Index(['evento_id', 'usuario_id', 'numero_factura'], { unique: true })
 export class FacturaEntity {
   @PrimaryGeneratedColumn()
   id: number;
@@ -26,11 +28,23 @@ export class FacturaEntity {
   @Column({ type: 'integer' })
   usuario_id: number;
 
-  @ManyToOne(() => UsuarioEntity, (usuario) => usuario.facturas, {
-    onDelete: 'RESTRICT',
-  })
+  @Column({ type: 'integer' })
+  evento_id: number;
+
+  @Column({ type: 'integer' })
+  participacion_id: number;
+
+  @ManyToOne(() => UsuarioEntity, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'usuario_id' })
   usuario: UsuarioEntity;
+
+  @ManyToOne(() => EventoEntity, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'evento_id' })
+  evento: EventoEntity;
+
+  @ManyToOne(() => ParticipacionEventoEntity, (p) => p.facturas, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'participacion_id' })
+  participacion: ParticipacionEventoEntity;
 
   @Column({ type: 'varchar', length: 50 })
   numero_factura: string;
@@ -52,4 +66,7 @@ export class FacturaEntity {
 
   @CreateDateColumn({ type: 'timestamptz' })
   fecha_carga: Date;
+
+  @Column({ type: 'boolean', default: true })
+  activo: boolean;
 }

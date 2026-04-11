@@ -3,7 +3,6 @@ import {
   PrimaryGeneratedColumn,
   Column,
   CreateDateColumn,
-  UpdateDateColumn,
   OneToMany,
   Index,
 } from 'typeorm';
@@ -26,16 +25,18 @@ export class UsuarioEntity {
   @Column({ type: 'varchar', length: 100, nullable: true })
   ciudad: string | null;
 
-  @Column({ type: 'integer', default: 0 })
-  cupones_acumulados: number;
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  email: string | null;
+
+  @Column({ type: 'boolean', default: true })
+  activo: boolean;
 
   @CreateDateColumn({ type: 'timestamptz' })
   fecha_registro: Date;
 
-  @UpdateDateColumn({ type: 'timestamptz' })
+  @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
   fecha_actualizacion: Date;
 
-  // Relación definida después de crear FacturaEntity
-  @OneToMany('FacturaEntity', 'usuario')
-  facturas: import('../../../modules/facturas/entities/factura.entity').FacturaEntity[];
+  @OneToMany('ParticipacionEventoEntity', 'usuario')
+  participaciones: import('../../participaciones/entities/participacion-evento.entity').ParticipacionEventoEntity[];
 }

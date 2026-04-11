@@ -1,0 +1,86 @@
+version: '3.9'
+
+# ──────────────────────────────────────────────────────────────
+# docker-compose.test.yml — Entorno de pruebas completo
+#
+# Uso:
+#   docker compose -f docker-compose.test.yml up --build
+#   docker compose -f docker-compose.test.yml down -v   # borrar datos
+#
+# Variables de entorno opcionales (ver .env.test.example):
+#   API_KEY, CLOUDINARY_*, CORS_ORIGIN
+# ──────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Aplicación NestJS ────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    image: voucher-flow-api:test
+    container_name: voucher-flow-app
+    restart: on-failure:3
+    ports:
+      - '${APP_PORT:-3000}:3000'
+    environment:
+      NODE_ENV: test
+      PORT: 3000
+
+      # Base de datos — apunta al servicio postgres de este compose
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: ${POSTGRES_USER:-postgres}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DATABASE_NAME: ${POSTGRES_DB:-voucher_flow}
+      DATABASE_SSL: 'false'
+
+      # Seguridad
+      API_KEY: ${API_KEY:-changeme-in-env}
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+
+      # Cloudinary (stub activo si están vacíos)
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+
+      # Rate limiting
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-100}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - voucher-net
+
+  # ── PostgreSQL ───────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: voucher-flow-db-test
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-voucher_flow}
+    ports:
+      - '${DB_PORT:-5433}:5432'        # Puerto 5433 para no colisionar con dev local
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-voucher_flow}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - voucher-net
+
+volumes:
+  postgres_test_data:
+    name: voucher-flow-test-data
+
+networks:
+  voucher-net:
+    driver: bridge

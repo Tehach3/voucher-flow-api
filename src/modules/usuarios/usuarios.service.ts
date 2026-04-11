@@ -15,6 +15,7 @@ export interface FindOrCreateParams {
   nombre: string;
   celular?: string;
   ciudad?: string;
+  email?: string;
 }
 
 export interface UsuariosPaginados {
@@ -34,7 +35,7 @@ export class UsuariosService {
   ) {}
 
   async findOrCreate(params: FindOrCreateParams): Promise<UsuarioEntity> {
-    const { cedula, nombre, celular, ciudad } = params;
+    const { cedula, nombre, celular, ciudad, email } = params;
 
     const existing = await this.usuariosRepository.findOne({
       where: { cedula },
@@ -50,7 +51,7 @@ export class UsuariosService {
       nombre,
       celular: celular ?? null,
       ciudad: ciudad ?? null,
-      cupones_acumulados: 0,
+      email: email ?? null,
     });
 
     const saved = await this.usuariosRepository.save(nuevo);
@@ -98,21 +99,11 @@ export class UsuariosService {
     if (dto.nombre !== undefined) usuario.nombre = dto.nombre;
     if (dto.celular !== undefined) usuario.celular = dto.celular;
     if (dto.ciudad !== undefined) usuario.ciudad = dto.ciudad;
+    if (dto.email !== undefined) usuario.email = dto.email;
 
     const updated = await this.usuariosRepository.save(usuario);
     this.logger.log(`[USUARIOS] Usuario actualizado: ${cedula}`);
     return this.toPublico(updated);
-  }
-
-  async incrementarCupones(usuarioId: number, cupones: number): Promise<void> {
-    await this.usuariosRepository.increment(
-      { id: usuarioId },
-      'cupones_acumulados',
-      cupones,
-    );
-    this.logger.debug(
-      `[USUARIOS] Cupones incrementados: usuario_id=${usuarioId} +${cupones}`,
-    );
   }
 
   private toPublico(usuario: UsuarioEntity): IUsuarioPublico {
@@ -121,7 +112,7 @@ export class UsuariosService {
       nombre: usuario.nombre,
       celular: usuario.celular,
       ciudad: usuario.ciudad,
-      cupones_acumulados: usuario.cupones_acumulados,
+      email: usuario.email,
     };
   }
 }

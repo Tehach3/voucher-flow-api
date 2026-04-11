@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { AppValidationPipe } from './common/pipes/validation.pipe';
@@ -10,8 +11,12 @@ async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
   const app = await NestFactory.create(AppModule);
 
-  // Security headers
-  app.use(helmet());
+  // Security headers (exclude swagger paths from CSP restrictions)
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+    }),
+  );
 
   // CORS
   app.enableCors({
@@ -25,11 +30,33 @@ async function bootstrap(): Promise<void> {
   app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalInterceptors(new LoggingInterceptor());
 
+  // Swagger
+  const swaggerConfig = new DocumentBuilder()
+    .setTitle('Voucher Flow API')
+    .setDescription('API para la plataforma de sorteos y cupones promocionales')
+    .setVersion('1.0')
+    .addBearerAuth(
+      { type: 'http', scheme: 'bearer', bearerFormat: 'API Key' },
+      'api-key',
+    )
+    .addTag('health', 'Estado del servicio')
+    .addTag('eventos', 'Gestión de eventos/sorteos')
+    .addTag('usuarios', 'Gestión de participantes')
+    .addTag('facturas', 'Carga y consulta de facturas')
+    .addTag('imagenes', 'Upload de imágenes')
+    .build();
+
+  const document = SwaggerModule.createDocument(app, swaggerConfig);
+  SwaggerModule.setup('api/docs', app, document, {
+    swaggerOptions: { persistAuthorization: true },
+  });
+
   const port = parseInt(process.env.PORT ?? '3000', 10);
   await app.listen(port);
   logger.log(`Application running on http://localhost:${port}`);
-  logger.log(`Health check: http://localhost:${port}/api/health`);
-  logger.log(`Environment: ${process.env.NODE_ENV ?? 'development'}`);
+  logger.log(`Swagger docs:    http://localhost:${port}/api/docs`);
+  logger.log(`Health check:    http://localhost:${port}/api/health`);
+  logger.log(`Environment:     ${process.env.NODE_ENV ?? 'development'}`);
 }
 
 bootstrap();

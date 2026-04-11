@@ -2,15 +2,17 @@ import { Injectable, Logger, LogLevel } from '@nestjs/common';
 
 @Injectable()
 export class LoggerService {
-  private readonly logger: Logger;
+  private logger: Logger;
 
-  constructor(context = 'App') {
-    this.logger = new Logger(context);
-  }
+  constructor() {
+  this.logger = new Logger('App');
+}
 
-  static forContext(context: string): LoggerService {
-    return new LoggerService(context);
-  }
+ static forContext(context: string): LoggerService {
+  const service = new LoggerService();
+  service.logger = new Logger(context);
+  return service;
+}
 
   log(message: string, ...optionalParams: unknown[]): void {
     this.logger.log(message, ...optionalParams);

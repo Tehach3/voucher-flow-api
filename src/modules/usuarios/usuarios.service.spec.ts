@@ -11,10 +11,11 @@ const mockUsuario = (): UsuarioEntity =>
     nombre: 'Juan Perez',
     celular: '04141234567',
     ciudad: 'Caracas',
-    cupones_acumulados: 0,
+    email: null,
+    activo: true,
     fecha_registro: new Date(),
     fecha_actualizacion: new Date(),
-    facturas: [],
+    participaciones: [],
   }) as UsuarioEntity;
 
 const mockRepository = () => ({
@@ -22,7 +23,6 @@ const mockRepository = () => ({
   create: jest.fn(),
   save: jest.fn(),
   findAndCount: jest.fn(),
-  increment: jest.fn(),
 });
 
 describe('UsuariosService', () => {
@@ -76,7 +76,6 @@ describe('UsuariosService', () => {
         expect.objectContaining({
           cedula: '12345678',
           nombre: 'Juan Perez',
-          cupones_acumulados: 0,
         }),
       );
       expect(repo.save).toHaveBeenCalledWith(nuevo);
@@ -126,20 +125,6 @@ describe('UsuariosService', () => {
     });
   });
 
-  describe('incrementarCupones', () => {
-    it('calls repository.increment with correct arguments', async () => {
-      repo.increment.mockResolvedValue(undefined);
-
-      await service.incrementarCupones(1, 5);
-
-      expect(repo.increment).toHaveBeenCalledWith(
-        { id: 1 },
-        'cupones_acumulados',
-        5,
-      );
-    });
-  });
-
   describe('findAll', () => {
     it('returns paginated results with correct shape', async () => {
       const usuarios = [mockUsuario()];
@@ -153,7 +138,7 @@ describe('UsuariosService', () => {
       expect(result.data).toHaveLength(1);
       expect(result.data[0]).not.toHaveProperty('id');
       expect(result.data[0]).toHaveProperty('cedula');
-      expect(result.data[0]).toHaveProperty('cupones_acumulados');
+      expect(result.data[0]).toHaveProperty('email');
     });
   });
 });

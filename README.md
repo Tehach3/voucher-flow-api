@@ -4,9 +4,9 @@ Backend REST API para plataforma de sorteos promocionales.
 
 ## Stack
 
-- **Runtime**: Node.js 18 LTS
+- **Runtime**: Node.js 20 LTS
 - **Framework**: NestJS 10
-- **Database**: PostgreSQL (Neon) via TypeORM
+- **Database**: PostgreSQL  via TypeORM
 - **Storage / OCR**: Cloudinary
 - **Language**: TypeScript 5 (strict mode)
 
