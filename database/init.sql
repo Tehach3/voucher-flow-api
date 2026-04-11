@@ -28,14 +28,15 @@ CREATE TABLE IF NOT EXISTS eventos (
   fecha_inicio TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
   fecha_vencimiento TIMESTAMP WITH TIME ZONE NOT NULL,
   fecha_cierre TIMESTAMP WITH TIME ZONE,
-  require_validacion_cupones BOOLEAN NOT NULL DEFAULT FALSE,
-  cupones_minimos INTEGER DEFAULT 1 CHECK (cupones_minimos >= 1),
-  skus_validos VARCHAR(10)[] NOT NULL DEFAULT ARRAY['250g', '500g', '1kg', '5kg'],
+  require_validacion_cupones BOOLEAN NOT NULL DEFAULT TRUE,
+  cupones_minimos INTEGER NOT NULL DEFAULT 1 CHECK (cupones_minimos >= 1),
+  tiene_condiciones_multiples BOOLEAN NOT NULL DEFAULT FALSE,
+  condiciones_cupones JSONB,
+  premios JSONB,
   activo BOOLEAN NOT NULL DEFAULT TRUE,
   fecha_registro TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
   fecha_actualizacion TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  imagen_url VARCHAR(500),
-  premio_descripcion TEXT
+  imagen_url VARCHAR(500)
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_eventos_nombre ON eventos(nombre) WHERE activo = TRUE;
@@ -47,9 +48,11 @@ CREATE INDEX IF NOT EXISTS idx_eventos_fecha_inicio ON eventos(fecha_inicio DESC
 COMMENT ON TABLE eventos IS 'Tabla de eventos/campañas de sorteo';
 COMMENT ON COLUMN eventos.estado IS 'Estado del evento: abierto, cerrado, pausado, finalizado';
 COMMENT ON COLUMN eventos.fecha_vencimiento IS 'Fecha límite para participar en el evento';
-COMMENT ON COLUMN eventos.require_validacion_cupones IS 'Si TRUE, se valida cupones_minimos';
-COMMENT ON COLUMN eventos.cupones_minimos IS 'Mínimo de cupones requeridos para participar (si validación habilitada)';
-COMMENT ON COLUMN eventos.skus_validos IS 'Array de SKUs válidos para este evento';
+COMMENT ON COLUMN eventos.require_validacion_cupones IS 'Siempre TRUE: se valida cupones_minimos para toda participación';
+COMMENT ON COLUMN eventos.cupones_minimos IS 'Mínimo de cupones requeridos para participar (obligatorio, mínimo 1)';
+COMMENT ON COLUMN eventos.tiene_condiciones_multiples IS 'TRUE si el evento tiene múltiples condiciones de generación de cupones (por SKU/peso). FALSE = genera 1 cupón por compra.';
+COMMENT ON COLUMN eventos.condiciones_cupones IS 'Array JSONB de condiciones: [{sku, cupones_por_unidad}]. Ej: [{"sku":"5kg","cupones_por_unidad":15}]';
+COMMENT ON COLUMN eventos.premios IS 'Array JSONB de premios del evento: [{descripcion, orden}]. Permite múltiples premios por campaña.';
 
 
 -- ============================================================================
@@ -327,7 +330,8 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE VIEW vista_eventos_activos AS
 SELECT id, nombre, descripcion, estado, fecha_inicio, fecha_vencimiento,
-       require_validacion_cupones, cupones_minimos, skus_validos, fecha_registro
+       cupones_minimos, tiene_condiciones_multiples, condiciones_cupones,
+       premios, fecha_registro
 FROM eventos
 WHERE activo = TRUE AND estado IN ('abierto', 'pausado')
 ORDER BY fecha_vencimiento ASC;

@@ -24,7 +24,7 @@ export class EventosService {
 
   async findAll(pagination: PaginationDto): Promise<EventosPaginados> {
     const [data, total] = await this.eventosRepository.findAndCount({
-      order: { fecha_registro: 'DESC' },
+      order: { fechaRegistro: 'DESC' },
       skip: pagination.offset,
       take: pagination.limit,
     });
@@ -40,7 +40,7 @@ export class EventosService {
   async findAbiertos(): Promise<IEventoPublico[]> {
     const eventos = await this.eventosRepository.find({
       where: { estado: 'abierto', activo: true },
-      order: { fecha_vencimiento: 'ASC' },
+      order: { fechaVencimiento: 'ASC' },
     });
 
     return eventos.map(this.toPublico);
@@ -57,20 +57,27 @@ export class EventosService {
   }
 
   async create(dto: CrearEventoDto): Promise<IEvento> {
+    const tieneCondiciones = dto.tieneCondicionesMultiples ?? false;
+
+    this.validarCondicionesCupones(tieneCondiciones, dto.condicionesCupones);
+
     const evento = this.eventosRepository.create({
       nombre: dto.nombre,
       descripcion: dto.descripcion ?? null,
-      fecha_inicio: dto.fecha_inicio ? new Date(dto.fecha_inicio) : new Date(),
-      fecha_vencimiento: new Date(dto.fecha_vencimiento),
-      require_validacion_cupones: dto.require_validacion_cupones ?? false,
-      cupones_minimos: dto.cupones_minimos ?? null,
-      skus_validos: dto.skus_validos ?? ['250g', '500g', '1kg', '5kg'],
-      imagen_url: dto.imagen_url ?? null,
-      premio_descripcion: dto.premio_descripcion ?? null,
+      fechaInicio: new Date(dto.fechaInicio),
+      fechaVencimiento: new Date(dto.fechaVencimiento),
+      requireValidacionCupones: true,
+      cuponesMinimos: dto.cuponesMinimos,
+      tieneCondicionesMultiples: tieneCondiciones,
+      condicionesCupones: dto.condicionesCupones ?? null,
+      premios: dto.premios ?? null,
+      imagenUrl: dto.imagenUrl ?? null,
     });
 
     const saved = await this.eventosRepository.save(evento);
-    this.logger.log(`[EVENTOS] Evento creado: id=${saved.id} nombre="${saved.nombre}"`);
+    this.logger.log(
+      `[EVENTOS] Evento creado: id=${saved.id} nombre="${saved.nombre}" condicionesMultiples=${tieneCondiciones}`,
+    );
     return saved;
   }
 
@@ -82,18 +89,27 @@ export class EventosService {
     }
 
     if (evento.estado !== 'abierto' && evento.estado !== 'pausado') {
-      throw new BadRequestException(`No se puede modificar un evento en estado "${evento.estado}"`);
+      throw new BadRequestException(
+        `No se puede modificar un evento en estado "${evento.estado}"`,
+      );
+    }
+
+    const tieneCondiciones =
+      dto.tieneCondicionesMultiples ?? evento.tieneCondicionesMultiples;
+
+    if (dto.condicionesCupones !== undefined) {
+      this.validarCondicionesCupones(tieneCondiciones, dto.condicionesCupones);
     }
 
     if (dto.nombre !== undefined) evento.nombre = dto.nombre;
     if (dto.descripcion !== undefined) evento.descripcion = dto.descripcion;
-    if (dto.fecha_vencimiento !== undefined) evento.fecha_vencimiento = new Date(dto.fecha_vencimiento);
-    if (dto.fecha_inicio !== undefined) evento.fecha_inicio = new Date(dto.fecha_inicio);
-    if (dto.require_validacion_cupones !== undefined) evento.require_validacion_cupones = dto.require_validacion_cupones;
-    if (dto.cupones_minimos !== undefined) evento.cupones_minimos = dto.cupones_minimos;
-    if (dto.skus_validos !== undefined) evento.skus_validos = dto.skus_validos;
-    if (dto.imagen_url !== undefined) evento.imagen_url = dto.imagen_url;
-    if (dto.premio_descripcion !== undefined) evento.premio_descripcion = dto.premio_descripcion;
+    if (dto.fechaVencimiento !== undefined) evento.fechaVencimiento = new Date(dto.fechaVencimiento);
+    if (dto.fechaInicio !== undefined) evento.fechaInicio = new Date(dto.fechaInicio);
+    if (dto.cuponesMinimos !== undefined) evento.cuponesMinimos = dto.cuponesMinimos;
+    if (dto.tieneCondicionesMultiples !== undefined) evento.tieneCondicionesMultiples = dto.tieneCondicionesMultiples;
+    if (dto.condicionesCupones !== undefined) evento.condicionesCupones = dto.condicionesCupones;
+    if (dto.premios !== undefined) evento.premios = dto.premios;
+    if (dto.imagenUrl !== undefined) evento.imagenUrl = dto.imagenUrl;
 
     const updated = await this.eventosRepository.save(evento);
     this.logger.log(`[EVENTOS] Evento actualizado: id=${id}`);
@@ -118,17 +134,38 @@ export class EventosService {
     return cerrado!;
   }
 
+  private validarCondicionesCupones(
+    tieneCondicionesMultiples: boolean,
+    condicionesCupones: Array<{ sku: string; cuponesPorUnidad: number }> | undefined,
+  ): void {
+    if (tieneCondicionesMultiples) {
+      if (!condicionesCupones || condicionesCupones.length < 2) {
+        throw new BadRequestException(
+          'condicionesCupones debe tener al menos 2 elementos cuando tieneCondicionesMultiples=true',
+        );
+      }
+    } else {
+      if (condicionesCupones && condicionesCupones.length > 1) {
+        throw new BadRequestException(
+          'condicionesCupones debe tener exactamente 1 elemento cuando tieneCondicionesMultiples=false',
+        );
+      }
+    }
+  }
+
   private toPublico(evento: EventoEntity): IEventoPublico {
     return {
       id: evento.id,
       nombre: evento.nombre,
       descripcion: evento.descripcion,
       estado: evento.estado,
-      fecha_inicio: evento.fecha_inicio,
-      fecha_vencimiento: evento.fecha_vencimiento,
-      skus_validos: evento.skus_validos,
-      imagen_url: evento.imagen_url,
-      premio_descripcion: evento.premio_descripcion,
+      fechaInicio: evento.fechaInicio,
+      fechaVencimiento: evento.fechaVencimiento,
+      cuponesMinimos: evento.cuponesMinimos,
+      tieneCondicionesMultiples: evento.tieneCondicionesMultiples,
+      condicionesCupones: evento.condicionesCupones,
+      premios: evento.premios,
+      imagenUrl: evento.imagenUrl,
     };
   }
 }

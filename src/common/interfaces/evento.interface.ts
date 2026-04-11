@@ -1,21 +1,22 @@
-import { EstadoEvento } from '../../modules/eventos/entities/evento.entity';
+import { EstadoEvento, CondicionCupon, Premio } from '../../modules/eventos/entities/evento.entity';
 
 export interface IEvento {
   id: number;
   nombre: string;
   descripcion: string | null;
   estado: EstadoEvento;
-  fecha_inicio: Date;
-  fecha_vencimiento: Date;
-  fecha_cierre: Date | null;
-  require_validacion_cupones: boolean;
-  cupones_minimos: number | null;
-  skus_validos: string[];
+  fechaInicio: Date;
+  fechaVencimiento: Date;
+  fechaCierre: Date | null;
+  requireValidacionCupones: boolean;
+  cuponesMinimos: number;
+  tieneCondicionesMultiples: boolean;
+  condicionesCupones: CondicionCupon[] | null;
+  premios: Premio[] | null;
   activo: boolean;
-  imagen_url: string | null;
-  premio_descripcion: string | null;
-  fecha_registro: Date;
-  fecha_actualizacion: Date;
+  imagenUrl: string | null;
+  fechaRegistro: Date;
+  fechaActualizacion: Date;
 }
 
 export interface IEventoPublico {
@@ -23,11 +24,13 @@ export interface IEventoPublico {
   nombre: string;
   descripcion: string | null;
   estado: EstadoEvento;
-  fecha_inicio: Date;
-  fecha_vencimiento: Date;
-  skus_validos: string[];
-  imagen_url: string | null;
-  premio_descripcion: string | null;
+  fechaInicio: Date;
+  fechaVencimiento: Date;
+  cuponesMinimos: number;
+  tieneCondicionesMultiples: boolean;
+  condicionesCupones: CondicionCupon[] | null;
+  premios: Premio[] | null;
+  imagenUrl: string | null;
 }
 
 export interface EventosPaginados {

@@ -4,16 +4,16 @@ import {
   IsBoolean,
   IsInt,
   IsArray,
-  IsEnum,
   IsDateString,
   IsUrl,
   Length,
   Min,
   ArrayNotEmpty,
+  ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { SKU_VALUES } from '../constants/sku.constants';
+import { CondicionCuponDto, PremioDto } from './crear-evento.dto';
 
 export class ActualizarEventoDto {
   @ApiPropertyOptional({ example: 'Sorteo Verano 2026 — Edición Especial' })
@@ -30,39 +30,43 @@ export class ActualizarEventoDto {
   @ApiPropertyOptional({ example: '2027-01-31T23:59:59Z' })
   @IsOptional()
   @IsDateString()
-  fecha_vencimiento?: string;
+  fechaVencimiento?: string;
 
   @ApiPropertyOptional({ example: '2026-06-01T00:00:00Z' })
   @IsOptional()
   @IsDateString()
-  fecha_inicio?: string;
+  fechaInicio?: string;
 
-  @ApiPropertyOptional({ example: true })
-  @IsOptional()
-  @IsBoolean()
-  require_validacion_cupones?: boolean;
-
-  @ApiPropertyOptional({ example: 5 })
+  @ApiPropertyOptional({ example: 5, description: 'Cupones mínimos requeridos para participar' })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  cupones_minimos?: number;
+  cuponesMinimos?: number;
 
-  @ApiPropertyOptional({ enum: SKU_VALUES, isArray: true, example: ['250g', '500g', '1kg', '5kg'] })
+  @ApiPropertyOptional({ example: true })
+  @IsOptional()
+  @IsBoolean()
+  tieneCondicionesMultiples?: boolean;
+
+  @ApiPropertyOptional({ type: [CondicionCuponDto] })
   @IsOptional()
   @IsArray()
   @ArrayNotEmpty()
-  @IsEnum(SKU_VALUES, { each: true, message: `Cada SKU debe ser uno de: ${SKU_VALUES.join(', ')}` })
-  skus_validos?: string[];
+  @ValidateNested({ each: true })
+  @Type(() => CondicionCuponDto)
+  condicionesCupones?: CondicionCuponDto[];
+
+  @ApiPropertyOptional({ type: [PremioDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @ValidateNested({ each: true })
+  @Type(() => PremioDto)
+  premios?: PremioDto[];
 
   @ApiPropertyOptional({ example: 'https://example.com/nuevo-banner.jpg' })
   @IsOptional()
-  @IsUrl({}, { message: 'imagen_url debe ser una URL válida' })
-  imagen_url?: string;
-
-  @ApiPropertyOptional({ example: 'Premio actualizado: Auto 0km' })
-  @IsOptional()
-  @IsString()
-  premio_descripcion?: string;
+  @IsUrl({}, { message: 'imagenUrl debe ser una URL válida' })
+  imagenUrl?: string;
 }

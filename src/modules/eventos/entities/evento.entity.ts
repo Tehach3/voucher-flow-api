@@ -8,6 +8,16 @@ import {
 
 export type EstadoEvento = 'abierto' | 'cerrado' | 'pausado' | 'finalizado';
 
+export interface CondicionCupon {
+  sku: string;
+  cuponesPorUnidad: number;
+}
+
+export interface Premio {
+  descripcion: string;
+  orden: number;
+}
+
 @Entity('eventos')
 export class EventoEntity {
   @PrimaryGeneratedColumn()
@@ -19,45 +29,44 @@ export class EventoEntity {
   @Column({ type: 'text', nullable: true })
   descripcion: string | null;
 
-  @Column({
-    type: 'varchar',
-    length: 20,
-    default: 'abierto',
-  })
+  @Column({ type: 'varchar', length: 20, default: 'abierto' })
   estado: EstadoEvento;
 
-  @Column({ type: 'timestamptz' })
-  fecha_inicio: Date;
+  @Column({ name: 'fecha_inicio', type: 'timestamptz' })
+  fechaInicio: Date;
 
-  @Column({ type: 'timestamptz' })
-  fecha_vencimiento: Date;
+  @Column({ name: 'fecha_vencimiento', type: 'timestamptz' })
+  fechaVencimiento: Date;
 
-  @Column({ type: 'timestamptz', nullable: true })
-  fecha_cierre: Date | null;
+  @Column({ name: 'fecha_cierre', type: 'timestamptz', nullable: true })
+  fechaCierre: Date | null;
 
-  @Column({ type: 'boolean', default: false })
-  require_validacion_cupones: boolean;
+  @Column({ name: 'require_validacion_cupones', type: 'boolean', default: true })
+  requireValidacionCupones: boolean;
 
-  @Column({ type: 'integer', nullable: true })
-  cupones_minimos: number | null;
+  @Column({ name: 'cupones_minimos', type: 'integer' })
+  cuponesMinimos: number;
 
-  @Column({ type: 'varchar', array: true, default: "ARRAY['250g','500g','1kg','5kg']" })
-  skus_validos: string[];
+  @Column({ name: 'tiene_condiciones_multiples', type: 'boolean', default: false })
+  tieneCondicionesMultiples: boolean;
+
+  @Column({ name: 'condiciones_cupones', type: 'jsonb', nullable: true })
+  condicionesCupones: CondicionCupon[] | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  premios: Premio[] | null;
 
   @Column({ type: 'boolean', default: true })
   activo: boolean;
 
-  @CreateDateColumn({ type: 'timestamptz' })
-  fecha_registro: Date;
+  @CreateDateColumn({ name: 'fecha_registro', type: 'timestamptz' })
+  fechaRegistro: Date;
 
-  @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
-  fecha_actualizacion: Date;
+  @Column({ name: 'fecha_actualizacion', type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
+  fechaActualizacion: Date;
 
-  @Column({ type: 'varchar', length: 500, nullable: true })
-  imagen_url: string | null;
-
-  @Column({ type: 'text', nullable: true })
-  premio_descripcion: string | null;
+  @Column({ name: 'imagen_url', type: 'varchar', length: 500, nullable: true })
+  imagenUrl: string | null;
 
   @OneToMany('ParticipacionEventoEntity', 'evento')
   participaciones: import('../../participaciones/entities/participacion-evento.entity').ParticipacionEventoEntity[];

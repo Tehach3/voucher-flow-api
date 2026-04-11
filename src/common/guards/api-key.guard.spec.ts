@@ -20,27 +20,21 @@ describe('ApiKeyGuard', () => {
     delete process.env.API_KEY;
   });
 
-  it('throws when Authorization header is missing', () => {
+  it('throws when x-api-key header is missing', () => {
     expect(() => guard.canActivate(mockContext({}))).toThrow(
       UnauthorizedException,
     );
   });
 
-  it('throws when format is not Bearer scheme', () => {
+  it('throws when key does not match API_KEY', () => {
     expect(() =>
-      guard.canActivate(mockContext({ authorization: 'Basic abc123' })),
+      guard.canActivate(mockContext({ 'x-api-key': 'wrong-key' })),
     ).toThrow(UnauthorizedException);
   });
 
-  it('throws when token does not match API_KEY', () => {
-    expect(() =>
-      guard.canActivate(mockContext({ authorization: 'Bearer wrong-key' })),
-    ).toThrow(UnauthorizedException);
-  });
-
-  it('returns true when token matches API_KEY', () => {
+  it('returns true when key matches API_KEY', () => {
     const result = guard.canActivate(
-      mockContext({ authorization: 'Bearer test-secret' }),
+      mockContext({ 'x-api-key': 'test-secret' }),
     );
     expect(result).toBe(true);
   });
