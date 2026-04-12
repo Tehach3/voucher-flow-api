@@ -6,7 +6,11 @@ import {
   OneToMany,
 } from 'typeorm';
 
-export type EstadoEvento = 'abierto' | 'cerrado' | 'pausado' | 'finalizado';
+/** Estado interno almacenado en DB. Solo el cierre manual cambia este campo. */
+export type EstadoEventoInterno = 'abierto' | 'cerrado';
+
+/** Estado calculado dinámicamente según fechas + estado interno, expuesto en la API */
+export type EstadoEvento = 'no_iniciado' | 'vigente' | 'vencido' | 'cerrado';
 
 export interface CondicionCupon {
   sku: string;
@@ -29,8 +33,9 @@ export class EventoEntity {
   @Column({ type: 'text', nullable: true })
   descripcion: string | null;
 
-  @Column({ type: 'varchar', length: 20, default: 'abierto' })
-  estado: EstadoEvento;
+  /** Valor en DB: 'abierto' (por defecto) o 'cerrado' (cierre manual) */
+  @Column({ name: 'estado', type: 'varchar', length: 20, default: 'abierto' })
+  estadoInterno: EstadoEventoInterno;
 
   @Column({ name: 'fecha_inicio', type: 'timestamptz' })
   fechaInicio: Date;

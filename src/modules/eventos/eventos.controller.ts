@@ -50,16 +50,18 @@ export class EventosController {
 
   @Get('disponibles')
   @ApiOperation({
-    summary: 'Listar eventos con disponibilidad calculada',
+    summary: 'Listar eventos por estado',
     description:
-      'Retorna eventos activos con el campo `disponibilidad` calculado en base a las fechas: ' +
-      '`disponible` (fecha actual entre fechaInicio y fechaCierre), ' +
-      '`noIniciado` (fecha actual antes de fechaInicio), ' +
-      '`vencido` (fecha actual después de fechaCierre). ' +
-      'Sin filtros retorna solo los eventos en estado `abierto`.',
+      'Retorna eventos activos con el estado calculado dinámicamente en base a las fechas y al cierre manual. ' +
+      'Estados posibles: ' +
+      '`vigente` (dentro del rango de fechas, acepta tickets), ' +
+      '`no_iniciado` (fechaInicio aún no ha llegado), ' +
+      '`vencido` (fechaCierre ya pasó), ' +
+      '`cerrado` (cerrado manualmente). ' +
+      'Sin filtro de estado retorna únicamente los eventos `vigente`.',
   })
-  @ApiQuery({ name: 'estado', required: false, enum: ['abierto', 'cerrado', 'pausado', 'finalizado'] })
-  @ApiOkResponse({ description: 'Eventos con disponibilidad calculada' })
+  @ApiQuery({ name: 'estado', required: false, enum: ['vigente', 'no_iniciado', 'vencido', 'cerrado'] })
+  @ApiOkResponse({ description: 'Lista de eventos filtrada por estado calculado' })
   findDisponibles(@Query() filtros: FiltrarEventosDto) {
     return this.eventosService.findAbiertos(filtros);
   }

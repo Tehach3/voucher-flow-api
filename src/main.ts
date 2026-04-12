@@ -25,6 +25,9 @@ async function bootstrap(): Promise<void> {
     credentials: true,
   });
 
+  // Prefijo global
+  app.setGlobalPrefix('api');
+
   // Global pipes, filters e interceptors
   app.useGlobalPipes(AppValidationPipe);
   app.useGlobalFilters(new HttpExceptionFilter());
@@ -35,14 +38,14 @@ async function bootstrap(): Promise<void> {
     .setTitle('Voucher Flow API')
     .setDescription('API para la plataforma de sorteos y cupones promocionales')
     .setVersion('1.0')
-    .addBearerAuth(
-      { type: 'http', scheme: 'bearer', bearerFormat: 'API Key' },
-      'api-key',
+    .addApiKey(
+      { type: 'apiKey', in: 'header', name: 'x-api-key' },
+      'x-api-key',
     )
     .addTag('health', 'Estado del servicio')
     .addTag('eventos', 'Gestión de eventos/sorteos')
     .addTag('usuarios', 'Gestión de participantes')
-    .addTag('facturas', 'Carga y consulta de facturas')
+    .addTag('tickets', 'Registro de tickets/vouchers y consulta de cupones')
     .addTag('imagenes', 'Upload de imágenes')
     .build();
 
@@ -56,6 +59,7 @@ async function bootstrap(): Promise<void> {
   logger.log(`Application running on http://localhost:${port}`);
   logger.log(`Swagger docs:    http://localhost:${port}/api/docs`);
   logger.log(`Health check:    http://localhost:${port}/api/health`);
+  logger.log(`Prefix:          /api`);
   logger.log(`Environment:     ${process.env.NODE_ENV ?? 'development'}`);
 }
 

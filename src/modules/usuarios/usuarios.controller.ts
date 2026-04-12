@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiTags,
-  ApiBearerAuth,
+  ApiSecurity,
   ApiOperation,
   ApiOkResponse,
   ApiNotFoundResponse,
@@ -24,9 +24,9 @@ import { PaginationDto } from '../../common/dtos/pagination.dto';
 import { ApiKeyGuard } from '../../common/guards/api-key.guard';
 
 @ApiTags('usuarios')
-@ApiBearerAuth('api-key')
+@ApiSecurity('x-api-key')
 @ApiUnauthorizedResponse({ description: 'API Key inválida o ausente' })
-@Controller('api/usuarios')
+@Controller('usuarios')
 @UseGuards(ApiKeyGuard)
 export class UsuariosController {
   constructor(private readonly usuariosService: UsuariosService) {}

@@ -12,10 +12,15 @@ import { IUsuario, IUsuarioPublico } from '../../common/interfaces/usuario.inter
 
 export interface FindOrCreateParams {
   cedula: string;
-  nombre: string;
+  nombre?: string;
   celular?: string;
   ciudad?: string;
   email?: string;
+}
+
+export interface FindOrCreateResult {
+  usuario: UsuarioEntity;
+  esNuevo: boolean;
 }
 
 export interface UsuariosPaginados {
@@ -34,21 +39,19 @@ export class UsuariosService {
     private readonly usuariosRepository: Repository<UsuarioEntity>,
   ) {}
 
-  async findOrCreate(params: FindOrCreateParams): Promise<UsuarioEntity> {
+  async findOrCreate(params: FindOrCreateParams): Promise<FindOrCreateResult> {
     const { cedula, nombre, celular, ciudad, email } = params;
 
-    const existing = await this.usuariosRepository.findOne({
-      where: { cedula },
-    });
+    const existing = await this.usuariosRepository.findOne({ where: { cedula } });
 
     if (existing) {
       this.logger.debug(`[USUARIOS] Usuario existente: ${cedula}`);
-      return existing;
+      return { usuario: existing, esNuevo: false };
     }
 
     const nuevo = this.usuariosRepository.create({
       cedula,
-      nombre,
+      nombre: nombre!,
       celular: celular ?? null,
       ciudad: ciudad ?? null,
       email: email ?? null,
@@ -56,7 +59,7 @@ export class UsuariosService {
 
     const saved = await this.usuariosRepository.save(nuevo);
     this.logger.log(`[USUARIOS] Usuario creado: ${cedula}`);
-    return saved;
+    return { usuario: saved, esNuevo: true };
   }
 
   async findByCedula(cedula: string): Promise<IUsuario> {

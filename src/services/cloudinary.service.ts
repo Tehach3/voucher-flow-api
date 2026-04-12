@@ -8,10 +8,15 @@ export class CloudinaryService {
   private readonly logger = new Logger(CloudinaryService.name);
   private readonly isConfigured: boolean;
 
-  constructor() {
-    this.isConfigured = cloudinaryConfig.isConfigured();
+  private readonly isMock: boolean;
 
-    if (this.isConfigured) {
+  constructor() {
+    this.isMock = cloudinaryConfig.isMockMode();
+    this.isConfigured = !this.isMock && cloudinaryConfig.isConfigured();
+
+    if (this.isMock) {
+      this.logger.warn('[CLOUDINARY] CLOUDINARY_MOCK=true — modo mock activo, todos los uploads devuelven respuesta simulada');
+    } else if (this.isConfigured) {
       cloudinary.config({
         cloud_name: cloudinaryConfig.cloudName,
         api_key: cloudinaryConfig.apiKey,
@@ -19,9 +24,7 @@ export class CloudinaryService {
       });
       this.logger.log('[CLOUDINARY] Servicio inicializado con credenciales reales');
     } else {
-      this.logger.warn(
-        '[CLOUDINARY] Credenciales no configuradas — modo stub activo',
-      );
+      this.logger.warn('[CLOUDINARY] Credenciales no configuradas — modo stub activo');
     }
   }
 
@@ -29,14 +32,31 @@ export class CloudinaryService {
     file: Express.Multer.File,
     cedula: string,
   ): Promise<{ url: string; publicId: string }> {
-    if (!this.isConfigured) {
-      return this.stubUpload(file, cedula);
+    const dataUri = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
+    return this.uploadDataUri(dataUri, cedula);
+  }
+
+  /**
+   * Sube una imagen en formato Data URI base64 (data:image/jpeg;base64,...).
+   * Usado por el endpoint POST /api/tickets cuando el frontend envía la imagen en JSON.
+   */
+  async uploadBase64(
+    dataUri: string,
+    cedula: string,
+  ): Promise<{ url: string; publicId: string }> {
+    return this.uploadDataUri(dataUri, cedula);
+  }
+
+  private async uploadDataUri(
+    dataUri: string,
+    cedula: string,
+  ): Promise<{ url: string; publicId: string }> {
+    if (this.isMock || !this.isConfigured) {
+      return this.stubUploadDataUri(dataUri, cedula);
     }
 
     try {
-      const b64 = `data:${file.mimetype};base64,${file.buffer.toString('base64')}`;
-
-      const result = await cloudinary.uploader.upload(b64, {
+      const result = await cloudinary.uploader.upload(dataUri, {
         folder: `sorteos/facturas/${cedula}`,
         resource_type: 'image',
         ocr: 'adv_ocr',
@@ -55,8 +75,8 @@ export class CloudinaryService {
   }
 
   async getOcrData(publicId: string): Promise<OcrData | null> {
-    if (!this.isConfigured) {
-      this.logger.debug('[CLOUDINARY] Stub: getOcrData retorna null');
+    if (this.isMock || !this.isConfigured) {
+      this.logger.debug('[CLOUDINARY] Stub/Mock: getOcrData retorna null');
       return null;
     }
 
@@ -88,17 +108,19 @@ export class CloudinaryService {
     }
   }
 
-  private stubUpload(
-    file: Express.Multer.File,
+  private stubUploadDataUri(
+    dataUri: string,
     cedula: string,
   ): { url: string; publicId: string } {
     const timestamp = Date.now();
-    const ext = file.mimetype.split('/')[1] ?? 'jpg';
+    const mimeMatch = dataUri.match(/^data:image\/([a-z]+);base64,/);
+    const ext = mimeMatch ? mimeMatch[1] : 'jpg';
     const publicId = `sorteos/facturas/${cedula}/stub_${timestamp}`;
     const url = `http://localhost:3000/stub-uploads/${cedula}/${timestamp}.${ext}`;
+    const approxKb = Math.round((dataUri.length * 3) / 4 / 1024);
 
     this.logger.debug(
-      `[CLOUDINARY] Stub upload para cédula ${cedula} — tamaño: ${file.size} bytes`,
+      `[CLOUDINARY] Stub upload para cédula ${cedula} — tamaño aprox: ${approxKb} KB`,
     );
 
     return { url, publicId };

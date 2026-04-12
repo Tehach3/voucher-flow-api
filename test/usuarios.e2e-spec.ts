@@ -1,6 +1,5 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { ConfigModule } from '@nestjs/config';
 import { UsuariosController } from '../src/modules/usuarios/usuarios.controller';
 import { UsuariosService } from '../src/modules/usuarios/usuarios.service';
 import { ApiKeyGuard } from '../src/common/guards/api-key.guard';
@@ -19,7 +18,6 @@ describe('UsuariosController (e2e)', () => {
     process.env.API_KEY = TEST_API_KEY;
 
     app = await createTestApp({
-      imports: [ConfigModule.forRoot({ isGlobal: true })],
       controllers: [UsuariosController],
       providers: [
         ApiKeyGuard,
@@ -38,21 +36,21 @@ describe('UsuariosController (e2e)', () => {
   // ── Auth ─────────────────────────────────────────────────────────────────
 
   describe('Guard de autenticación', () => {
-    it('GET /api/usuarios → 401 sin Authorization header', () => {
+    it('GET /api/usuarios → 401 sin x-api-key header', () => {
       return request(app.getHttpServer()).get('/api/usuarios').expect(401);
     });
 
     it('GET /api/usuarios → 401 con API Key inválida', () => {
       return request(app.getHttpServer())
         .get('/api/usuarios')
-        .set('Authorization', 'Bearer invalid-key')
+        .set('x-api-key', 'invalid-key')
         .expect(401);
     });
 
-    it('GET /api/usuarios → 401 con formato Bearer incorrecto', () => {
+    it('GET /api/usuarios → 401 con formato Authorization Bearer (no aceptado)', () => {
       return request(app.getHttpServer())
         .get('/api/usuarios')
-        .set('Authorization', TEST_API_KEY)
+        .set('Authorization', `Bearer ${TEST_API_KEY}`)
         .expect(401);
     });
   });

@@ -1,15 +1,18 @@
 import { IsOptional, IsEnum } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
-const ESTADOS_EVENTO = ['abierto', 'cerrado', 'pausado', 'finalizado'] as const;
+export const ESTADOS_EVENTO_PUBLICO = ['no_iniciado', 'vigente', 'vencido', 'cerrado'] as const;
+export type EstadoEventoPublico = (typeof ESTADOS_EVENTO_PUBLICO)[number];
 
 export class FiltrarEventosDto {
   @ApiPropertyOptional({
-    enum: ESTADOS_EVENTO,
-    example: 'abierto',
-    description: 'Filtrar por estado del evento. Sin filtro retorna todos los eventos activos.',
+    enum: ESTADOS_EVENTO_PUBLICO,
+    example: 'vigente',
+    description:
+      'Filtrar por estado calculado del evento. ' +
+      'Sin filtro retorna solo los eventos vigentes (activos y dentro del rango de fechas).',
   })
   @IsOptional()
-  @IsEnum(ESTADOS_EVENTO, { message: `estado debe ser uno de: ${ESTADOS_EVENTO.join(', ')}` })
-  estado?: (typeof ESTADOS_EVENTO)[number];
+  @IsEnum(ESTADOS_EVENTO_PUBLICO, { message: `estado debe ser uno de: ${ESTADOS_EVENTO_PUBLICO.join(', ')}` })
+  estado?: EstadoEventoPublico;
 }

@@ -20,7 +20,7 @@ export interface OcrData {
 }
 
 @Entity('facturas')
-@Index(['evento_id', 'usuario_id', 'numero_factura'], { unique: true })
+@Index(['evento_id', 'usuario_id', 'numero_factura', 'sku'], { unique: true })
 export class FacturaEntity {
   @PrimaryGeneratedColumn()
   id: number;
@@ -49,11 +49,23 @@ export class FacturaEntity {
   @Column({ type: 'varchar', length: 50 })
   numero_factura: string;
 
+  @Column({ type: 'varchar', length: 255 })
+  local: string;
+
+  @Column({ type: 'boolean', default: false })
+  multiplicador: boolean;
+
+  @Column({ name: 'coeficiente_multiplicador', type: 'integer', nullable: true })
+  coeficienteMultiplicador: number | null;
+
   @Column({ type: 'varchar', length: 10 })
   sku: string;
 
   @Column({ type: 'integer' })
   cantidad: number;
+
+  @Column({ type: 'integer' })
+  cupones_base: number;
 
   @Column({ type: 'integer' })
   cupones_generados: number;

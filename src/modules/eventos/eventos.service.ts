@@ -16,8 +16,8 @@ import {
   IEventoCreado,
   IEventoPublico,
   EventosPaginados,
-  DisponibilidadEvento,
 } from '../../common/interfaces/evento.interface';
+import { EstadoEvento } from './entities/evento.entity';
 
 @Injectable()
 export class EventosService {
@@ -45,20 +45,17 @@ export class EventosService {
   }
 
   async findAbiertos(filtros: FiltrarEventosDto): Promise<IEventoPublico[]> {
-    const where: Record<string, unknown> = { activo: true };
-
-    if (filtros.estado) {
-      where.estado = filtros.estado;
-    } else {
-      where.estado = 'abierto';
-    }
-
+    // Traemos todos los eventos activos y calculamos el estado dinámicamente
     const eventos = await this.eventosRepository.find({
-      where,
+      where: { activo: true },
       order: { fechaCierre: 'ASC' },
     });
 
-    return eventos.map(this.toPublico);
+    const estadoFiltro = filtros.estado ?? 'vigente';
+
+    return eventos
+      .map(this.toPublico)
+      .filter((e) => e.estado === estadoFiltro);
   }
 
   async findById(id: number): Promise<IEvento> {
@@ -75,6 +72,7 @@ export class EventosService {
     const tieneCondiciones = dto.tieneCondicionesMultiples ?? false;
 
     this.validarCondicionesCupones(tieneCondiciones, dto.condicionesCupones);
+    this.validarFechasCreacion(dto.fechaInicio, dto.fechaCierre);
 
     const evento = this.eventosRepository.create({
       nombre: dto.nombre,
@@ -104,16 +102,16 @@ export class EventosService {
     };
   }
 
-  async update(id: number, dto: ActualizarEventoDto): Promise<IEvento> {
+  async update(id: number, dto: ActualizarEventoDto): Promise<IEventoPublico> {
     const evento = await this.eventosRepository.findOne({ where: { id } });
 
     if (!evento) {
       throw new NotFoundException(`Evento con id ${id} no encontrado`);
     }
 
-    if (evento.estado !== 'abierto' && evento.estado !== 'pausado') {
+    if (evento.estadoInterno === 'cerrado') {
       throw new BadRequestException(
-        `No se puede modificar un evento en estado "${evento.estado}"`,
+        `No se puede modificar un evento cerrado`,
       );
     }
 
@@ -124,10 +122,18 @@ export class EventosService {
       this.validarCondicionesCupones(tieneCondiciones, dto.condicionesCupones);
     }
 
+    // Validar fechas si se actualizan
+    const nuevaFechaInicio = dto.fechaInicio ? new Date(dto.fechaInicio) : evento.fechaInicio;
+    const nuevaFechaCierre = dto.fechaCierre ? new Date(dto.fechaCierre) : evento.fechaCierre;
+
+    if (dto.fechaInicio !== undefined || dto.fechaCierre !== undefined) {
+      this.validarFechasActualizacion(nuevaFechaInicio, nuevaFechaCierre);
+    }
+
     if (dto.nombre !== undefined) evento.nombre = dto.nombre;
     if (dto.descripcion !== undefined) evento.descripcion = dto.descripcion;
-    if (dto.fechaCierre !== undefined) evento.fechaCierre = new Date(dto.fechaCierre);
-    if (dto.fechaInicio !== undefined) evento.fechaInicio = new Date(dto.fechaInicio);
+    if (dto.fechaCierre !== undefined) evento.fechaCierre = nuevaFechaCierre;
+    if (dto.fechaInicio !== undefined) evento.fechaInicio = nuevaFechaInicio;
     if (dto.cuponesMinimos !== undefined) evento.cuponesMinimos = dto.cuponesMinimos;
     if (dto.tieneCondicionesMultiples !== undefined) evento.tieneCondicionesMultiples = dto.tieneCondicionesMultiples;
     if (dto.condicionesCupones !== undefined) evento.condicionesCupones = dto.condicionesCupones;
@@ -136,32 +142,69 @@ export class EventosService {
 
     const updated = await this.eventosRepository.save(evento);
     this.logger.log(`[EVENTOS] Evento actualizado: id=${id}`);
-    return updated;
+    return this.toPublico(updated);
   }
 
-  async cerrar(id: number): Promise<IEvento> {
+  async cerrar(id: number): Promise<IEventoPublico> {
     const evento = await this.eventosRepository.findOne({ where: { id } });
 
     if (!evento) {
       throw new NotFoundException(`Evento con id ${id} no encontrado`);
     }
 
-    if (evento.estado === 'finalizado') {
-      throw new BadRequestException(`El evento ${id} ya está finalizado`);
+    if (evento.estadoInterno === 'cerrado') {
+      throw new BadRequestException(`El evento ${id} ya está cerrado`);
     }
 
     await this.dataSource.query('SELECT cerrar_evento($1)', [id]);
 
     const cerrado = await this.eventosRepository.findOne({ where: { id } });
     this.logger.log(`[EVENTOS] Evento cerrado: id=${id}`);
-    return cerrado!;
+    return this.toPublico(cerrado!);
   }
 
-  private calcularDisponibilidad(evento: EventoEntity): DisponibilidadEvento {
+  // ── Privados ──────────────────────────────────────────────────────────────
+
+  calcularEstado(evento: EventoEntity): EstadoEvento {
+    if (evento.estadoInterno === 'cerrado') return 'cerrado';
     const now = new Date();
-    if (now < evento.fechaInicio) return 'noIniciado';
+    if (now < evento.fechaInicio) return 'no_iniciado';
     if (now > evento.fechaCierre) return 'vencido';
-    return 'disponible';
+    return 'vigente';
+  }
+
+  private validarFechasCreacion(fechaInicioStr: string, fechaCierreStr: string): void {
+    const now = new Date();
+    const fechaInicio = new Date(fechaInicioStr);
+    const fechaCierre = new Date(fechaCierreStr);
+
+    if (fechaCierre <= now) {
+      throw new BadRequestException(
+        'fechaCierre debe ser una fecha futura — no se pueden crear eventos que ya hayan vencido',
+      );
+    }
+
+    if (fechaInicio >= fechaCierre) {
+      throw new BadRequestException(
+        'fechaInicio debe ser anterior a fechaCierre',
+      );
+    }
+  }
+
+  private validarFechasActualizacion(fechaInicio: Date, fechaCierre: Date): void {
+    const now = new Date();
+
+    if (fechaCierre <= now) {
+      throw new BadRequestException(
+        'fechaCierre debe ser una fecha futura — no se puede establecer una fecha de cierre ya vencida',
+      );
+    }
+
+    if (fechaInicio >= fechaCierre) {
+      throw new BadRequestException(
+        'fechaInicio debe ser anterior a fechaCierre',
+      );
+    }
   }
 
   private validarCondicionesCupones(
@@ -188,8 +231,7 @@ export class EventosService {
       id: evento.id,
       nombre: evento.nombre,
       descripcion: evento.descripcion,
-      estado: evento.estado,
-      disponibilidad: this.calcularDisponibilidad(evento),
+      estado: this.calcularEstado(evento),
       fechaInicio: evento.fechaInicio,
       fechaCierre: evento.fechaCierre,
       cuponesMinimos: evento.cuponesMinimos,

@@ -13,7 +13,7 @@ export class UsuarioEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ type: 'varchar', length: 8 })
+  @Column({ type: 'varchar', length: 10 })
   cedula: string;
 
   @Column({ type: 'varchar', length: 255 })

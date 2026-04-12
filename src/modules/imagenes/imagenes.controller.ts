@@ -13,7 +13,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiTags,
-  ApiBearerAuth,
+  ApiSecurity,
   ApiOperation,
   ApiCreatedResponse,
   ApiUnauthorizedResponse,
@@ -29,9 +29,9 @@ import { REGEX } from '../../common/constants/regex.constants';
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 
 @ApiTags('imagenes')
-@ApiBearerAuth('api-key')
+@ApiSecurity('x-api-key')
 @ApiUnauthorizedResponse({ description: 'API Key inválida o ausente' })
-@Controller('api/imagenes')
+@Controller('imagenes')
 @UseGuards(ApiKeyGuard)
 export class ImagenesController {
   constructor(private readonly imagenesService: ImagenesService) {}

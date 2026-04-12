@@ -1,12 +1,10 @@
-import { EstadoEvento, CondicionCupon, Premio } from '../../modules/eventos/entities/evento.entity';
-
-export type DisponibilidadEvento = 'disponible' | 'noIniciado' | 'vencido';
+import { EstadoEvento, EstadoEventoInterno, CondicionCupon, Premio } from '../../modules/eventos/entities/evento.entity';
 
 export interface IEvento {
   id: number;
   nombre: string;
   descripcion: string | null;
-  estado: EstadoEvento;
+  estadoInterno: EstadoEventoInterno;
   fechaInicio: Date;
   fechaCierre: Date;
   requireValidacionCupones: boolean;
@@ -24,8 +22,8 @@ export interface IEventoPublico {
   id: number;
   nombre: string;
   descripcion: string | null;
+  /** Estado calculado: no_iniciado | vigente | vencido | cerrado */
   estado: EstadoEvento;
-  disponibilidad: DisponibilidadEvento;
   fechaInicio: Date;
   fechaCierre: Date;
   cuponesMinimos: number;
