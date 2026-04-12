@@ -11,10 +11,10 @@ import { FacturasService } from './facturas.service';
 import { FacturaEntity } from './entities/factura.entity';
 import { TicketPendienteEntity } from './entities/ticket-pendiente.entity';
 import { ParticipacionEventoEntity } from '../participaciones/entities/participacion-evento.entity';
-import { UsuariosService } from '../usuarios/usuarios.service';
+import { ParticipantesService } from '../participantes/participantes.service';
 import { EventosService } from '../eventos/eventos.service';
 import { CloudinaryService } from '../../services/cloudinary.service';
-import { UsuarioEntity } from '../usuarios/entities/usuario.entity';
+import { ParticipanteEntity } from '../participantes/entities/participante.entity';
 import { EventoEntity } from '../eventos/entities/evento.entity';
 import { RegistrarParticipacionDto } from '../../common/dtos/registrar-participacion.dto';
 import { FiltrarTicketsDto } from '../../common/dtos/filtrar-tickets.dto';
@@ -22,7 +22,7 @@ import { FiltrarPendientesDto } from '../../common/dtos/filtrar-pendientes.dto';
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
-const mockUsuario = (): UsuarioEntity =>
+const mockParticipanteFixture = (): ParticipanteEntity =>
   ({
     id: 1,
     cedula: '12345678',
@@ -34,7 +34,7 @@ const mockUsuario = (): UsuarioEntity =>
     fecha_registro: new Date(),
     fecha_actualizacion: new Date(),
     participaciones: [],
-  }) as UsuarioEntity;
+  }) as ParticipanteEntity;
 
 const makeEvento = (overrides: Partial<EventoEntity> = {}): EventoEntity => {
   const now = new Date();
@@ -62,7 +62,7 @@ const makeEvento = (overrides: Partial<EventoEntity> = {}): EventoEntity => {
 const mockParticipacion = (extra: Partial<ParticipacionEventoEntity> = {}): ParticipacionEventoEntity =>
   ({
     id: 10,
-    usuario_id: 1,
+    participante_id: 1,
     evento_id: 1,
     cupones_acumulados: 0,
     activo: true,
@@ -74,7 +74,7 @@ const mockParticipacion = (extra: Partial<ParticipacionEventoEntity> = {}): Part
 const mockFactura = (extra: Partial<FacturaEntity> = {}): FacturaEntity =>
   ({
     id: 1,
-    usuario_id: 1,
+    participante_id: 1,
     evento_id: 1,
     participacion_id: 10,
     numero_factura: 'TKT-001',
@@ -162,7 +162,7 @@ const mockDataSource = () => ({
   }),
 });
 
-const mockUsuariosService = () => ({
+const mockParticipantesService = () => ({
   findOrCreate: jest.fn(),
   findByCedula: jest.fn(),
 });
@@ -186,7 +186,7 @@ describe('FacturasService', () => {
   let pendientesRepo: ReturnType<typeof mockPendientesRepo>;
   let participacionesRepo: ReturnType<typeof mockParticipacionesRepo>;
   let dataSource: ReturnType<typeof mockDataSource>;
-  let usuariosService: ReturnType<typeof mockUsuariosService>;
+  let participantesService: ReturnType<typeof mockParticipantesService>;
   let eventosService: ReturnType<typeof mockEventosService>;
   let cloudinaryService: ReturnType<typeof mockCloudinaryService>;
 
@@ -198,7 +198,7 @@ describe('FacturasService', () => {
         { provide: getRepositoryToken(TicketPendienteEntity), useFactory: mockPendientesRepo },
         { provide: getRepositoryToken(ParticipacionEventoEntity), useFactory: mockParticipacionesRepo },
         { provide: DataSource, useFactory: mockDataSource },
-        { provide: UsuariosService, useFactory: mockUsuariosService },
+        { provide: ParticipantesService, useFactory: mockParticipantesService },
         { provide: EventosService, useFactory: mockEventosService },
         { provide: CloudinaryService, useFactory: mockCloudinaryService },
       ],
@@ -209,7 +209,7 @@ describe('FacturasService', () => {
     pendientesRepo = module.get(getRepositoryToken(TicketPendienteEntity));
     participacionesRepo = module.get(getRepositoryToken(ParticipacionEventoEntity));
     dataSource = module.get(DataSource);
-    usuariosService = module.get(UsuariosService);
+    participantesService = module.get(ParticipantesService);
     eventosService = module.get(EventosService);
     cloudinaryService = module.get(CloudinaryService);
   });
@@ -227,7 +227,7 @@ describe('FacturasService', () => {
 
     const setupHappyPath = (esNuevo = false) => {
       eventosService.findById.mockResolvedValue(makeEvento());
-      usuariosService.findOrCreate.mockResolvedValue({ usuario: mockUsuario(), esNuevo });
+      participantesService.findOrCreate.mockResolvedValue({ participante: mockParticipanteFixture(), esNuevo });
       dataSource.query.mockResolvedValue(undefined);
       participacionesRepo.findOne
         .mockResolvedValueOnce(mockParticipacion())
@@ -267,7 +267,7 @@ describe('FacturasService', () => {
         ],
       });
       eventosService.findById.mockResolvedValue(evento);
-      usuariosService.findOrCreate.mockResolvedValue({ usuario: mockUsuario(), esNuevo: false });
+      participantesService.findOrCreate.mockResolvedValue({ participante: mockParticipanteFixture(), esNuevo: false });
       dataSource.query.mockResolvedValue(undefined);
       participacionesRepo.findOne
         .mockResolvedValueOnce(mockParticipacion())
@@ -287,7 +287,7 @@ describe('FacturasService', () => {
       // SKU_CUPONES: 5kg → 15 cupones/unidad
       const evento = makeEvento({ condicionesCupones: null });
       eventosService.findById.mockResolvedValue(evento);
-      usuariosService.findOrCreate.mockResolvedValue({ usuario: mockUsuario(), esNuevo: false });
+      participantesService.findOrCreate.mockResolvedValue({ participante: mockParticipanteFixture(), esNuevo: false });
       dataSource.query.mockResolvedValue(undefined);
       participacionesRepo.findOne
         .mockResolvedValueOnce(mockParticipacion())
@@ -306,7 +306,7 @@ describe('FacturasService', () => {
       // 5kg × 2 = 30, 1kg × 1 = 5 → total 35
       const evento = makeEvento({ condicionesCupones: null });
       eventosService.findById.mockResolvedValue(evento);
-      usuariosService.findOrCreate.mockResolvedValue({ usuario: mockUsuario(), esNuevo: false });
+      participantesService.findOrCreate.mockResolvedValue({ participante: mockParticipanteFixture(), esNuevo: false });
       dataSource.query.mockResolvedValue(undefined);
       participacionesRepo.findOne
         .mockResolvedValueOnce(mockParticipacion())
@@ -368,7 +368,7 @@ describe('FacturasService', () => {
       eventosService.findById.mockResolvedValue(
         makeEvento({ condicionesCupones: [{ sku: '5kg', cuponesPorUnidad: 15 }] }),
       );
-      usuariosService.findOrCreate.mockResolvedValue({ usuario: mockUsuario(), esNuevo: false });
+      participantesService.findOrCreate.mockResolvedValue({ participante: mockParticipanteFixture(), esNuevo: false });
       await expect(
         service.registrarParticipacion({ ...baseDto, productos: [{ sku: '1kg', cantidad: 1 }] }, mockFoto()),
       ).rejects.toThrow(BadRequestException);
@@ -377,7 +377,7 @@ describe('FacturasService', () => {
 
     it('lanza 400 cuando es usuario nuevo y falta el nombre, sin tocar Cloudinary', async () => {
       eventosService.findById.mockResolvedValue(makeEvento());
-      usuariosService.findOrCreate.mockResolvedValue({ usuario: mockUsuario(), esNuevo: true });
+      participantesService.findOrCreate.mockResolvedValue({ participante: mockParticipanteFixture(), esNuevo: true });
       await expect(
         service.registrarParticipacion({ ...baseDto, nombre: undefined }, mockFoto()),
       ).rejects.toThrow(BadRequestException);
@@ -386,7 +386,7 @@ describe('FacturasService', () => {
 
     it('lanza 409 cuando ticket duplicado, sin tocar Cloudinary', async () => {
       eventosService.findById.mockResolvedValue(makeEvento());
-      usuariosService.findOrCreate.mockResolvedValue({ usuario: mockUsuario(), esNuevo: false });
+      participantesService.findOrCreate.mockResolvedValue({ participante: mockParticipanteFixture(), esNuevo: false });
       dataSource.query.mockResolvedValue(undefined);
       participacionesRepo.findOne.mockResolvedValue(mockParticipacion());
       facturasRepo.findOne.mockResolvedValue(mockFactura());
@@ -409,7 +409,7 @@ describe('FacturasService', () => {
 
     const setupValidations = () => {
       eventosService.findById.mockResolvedValue(makeEvento());
-      usuariosService.findOrCreate.mockResolvedValue({ usuario: mockUsuario(), esNuevo: false });
+      participantesService.findOrCreate.mockResolvedValue({ participante: mockParticipanteFixture(), esNuevo: false });
       dataSource.query.mockResolvedValue(undefined);
       participacionesRepo.findOne
         .mockResolvedValueOnce(mockParticipacion())
@@ -476,7 +476,7 @@ describe('FacturasService', () => {
       pendientesRepo.findOne.mockResolvedValue(pendiente);
       pendientesRepo.save.mockResolvedValue(pendiente);
       eventosService.findById.mockResolvedValue(makeEvento());
-      usuariosService.findOrCreate.mockResolvedValue({ usuario: mockUsuario(), esNuevo: false });
+      participantesService.findOrCreate.mockResolvedValue({ participante: mockParticipanteFixture(), esNuevo: false });
       dataSource.query.mockResolvedValue(undefined);
       participacionesRepo.findOne
         .mockResolvedValueOnce(mockParticipacion())
@@ -575,7 +575,7 @@ describe('FacturasService', () => {
       // p1: exitoso (tiene URL, DB funciona)
       // p2: falla (Cloudinary down)
       eventosService.findById.mockResolvedValue(makeEvento());
-      usuariosService.findOrCreate.mockResolvedValue({ usuario: mockUsuario(), esNuevo: false });
+      participantesService.findOrCreate.mockResolvedValue({ participante: mockParticipanteFixture(), esNuevo: false });
       dataSource.query.mockResolvedValue(undefined);
       participacionesRepo.findOne.mockResolvedValue(mockParticipacion());
       facturasRepo.findOne.mockResolvedValue(null);
@@ -653,7 +653,7 @@ describe('FacturasService', () => {
 
   describe('getCuponesByCedula', () => {
     it('retorna la jerarquía usuario → campañas → facturas', async () => {
-      usuariosService.findByCedula.mockResolvedValue(mockUsuario());
+      participantesService.findByCedula.mockResolvedValue(mockParticipanteFixture());
       participacionesRepo.find.mockResolvedValue([
         {
           ...mockParticipacion({ cupones_acumulados: 15 }),
@@ -669,7 +669,7 @@ describe('FacturasService', () => {
     });
 
     it('propaga NotFoundException cuando la cédula no existe', async () => {
-      usuariosService.findByCedula.mockRejectedValue(new NotFoundException());
+      participantesService.findByCedula.mockRejectedValue(new NotFoundException());
       await expect(service.getCuponesByCedula('000000')).rejects.toThrow(NotFoundException);
     });
   });
@@ -678,7 +678,7 @@ describe('FacturasService', () => {
 
   describe('getCuponesByCedulaEvento', () => {
     it('retorna datos cuando existe participación', async () => {
-      usuariosService.findByCedula.mockResolvedValue(mockUsuario());
+      participantesService.findByCedula.mockResolvedValue(mockParticipanteFixture());
       participacionesRepo.findOne.mockResolvedValue(mockParticipacion({ cupones_acumulados: 10 }));
       facturasRepo.find.mockResolvedValue([mockFactura(), mockFactura()]);
 
@@ -689,7 +689,7 @@ describe('FacturasService', () => {
     });
 
     it('retorna estado vacío cuando no hay participación', async () => {
-      usuariosService.findByCedula.mockResolvedValue(mockUsuario());
+      participantesService.findByCedula.mockResolvedValue(mockParticipanteFixture());
       participacionesRepo.findOne.mockResolvedValue(null);
 
       const result = await service.getCuponesByCedulaEvento('12345678', 99);

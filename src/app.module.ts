@@ -4,7 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { getDatabaseConfig } from './config/database.config';
-import { UsuariosModule } from './modules/usuarios/usuarios.module';
+import { ParticipantesModule } from './modules/participantes/participantes.module';
 import { FacturasModule } from './modules/facturas/facturas.module';
 import { ImagenesModule } from './modules/imagenes/imagenes.module';
 import { EventosModule } from './modules/eventos/eventos.module';
@@ -18,7 +18,7 @@ import { EventosModule } from './modules/eventos/eventos.module';
     TypeOrmModule.forRootAsync({
       useFactory: () => getDatabaseConfig(),
     }),
-    UsuariosModule,
+    ParticipantesModule,
     EventosModule,
     FacturasModule,
     ImagenesModule,

@@ -7,36 +7,36 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
-import { UsuarioEntity } from '../../usuarios/entities/usuario.entity';
+import { ParticipanteEntity } from '../../participantes/entities/participante.entity';
 import { EventoEntity } from '../../eventos/entities/evento.entity';
 import { ParticipacionEventoEntity } from '../../participaciones/entities/participacion-evento.entity';
 
 export interface OcrData {
-  numero_factura: string | null;
+  numeroTicket: string | null;
   fecha: string | null;
   monto: string | null;
   confidence: number;
-  raw_text?: string;
+  rawText?: string;
 }
 
-@Entity('facturas')
-@Index(['evento_id', 'usuario_id', 'numero_factura', 'sku'], { unique: true })
+@Entity('tickets')
+@Index(['eventoId', 'participanteId', 'numeroTicket', 'sku'], { unique: true })
 export class FacturaEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ type: 'integer' })
-  usuario_id: number;
+  @Column({ name: 'participante_id', type: 'integer' })
+  participanteId: number;
 
-  @Column({ type: 'integer' })
-  evento_id: number;
+  @Column({ name: 'evento_id', type: 'integer' })
+  eventoId: number;
 
-  @Column({ type: 'integer' })
-  participacion_id: number;
+  @Column({ name: 'participacion_id', type: 'integer' })
+  participacionId: number;
 
-  @ManyToOne(() => UsuarioEntity, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'usuario_id' })
-  usuario: UsuarioEntity;
+  @ManyToOne(() => ParticipanteEntity, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'participante_id' })
+  participante: ParticipanteEntity;
 
   @ManyToOne(() => EventoEntity, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'evento_id' })
@@ -46,8 +46,8 @@ export class FacturaEntity {
   @JoinColumn({ name: 'participacion_id' })
   participacion: ParticipacionEventoEntity;
 
-  @Column({ type: 'varchar', length: 50 })
-  numero_factura: string;
+  @Column({ name: 'numero_ticket', type: 'varchar', length: 50 })
+  numeroTicket: string;
 
   @Column({ type: 'varchar', length: 255 })
   local: string;
@@ -64,20 +64,20 @@ export class FacturaEntity {
   @Column({ type: 'integer' })
   cantidad: number;
 
-  @Column({ type: 'integer' })
-  cupones_base: number;
+  @Column({ name: 'cupones_base', type: 'integer' })
+  cuponesBase: number;
 
-  @Column({ type: 'integer' })
-  cupones_generados: number;
+  @Column({ name: 'cupones_generados', type: 'integer' })
+  cuponesGenerados: number;
 
-  @Column({ type: 'varchar', length: 500 })
-  foto_url: string;
+  @Column({ name: 'foto_url', type: 'varchar', length: 500 })
+  fotoUrl: string;
 
-  @Column({ type: 'jsonb', nullable: true })
-  ocr_data: OcrData | null;
+  @Column({ name: 'ocr_data', type: 'jsonb', nullable: true })
+  ocrData: OcrData | null;
 
-  @CreateDateColumn({ type: 'timestamptz' })
-  fecha_carga: Date;
+  @CreateDateColumn({ name: 'fecha_carga', type: 'timestamptz' })
+  fechaCarga: Date;
 
   @Column({ type: 'boolean', default: true })
   activo: boolean;

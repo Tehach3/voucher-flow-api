@@ -7,9 +7,9 @@ import {
   Index,
 } from 'typeorm';
 
-@Entity('usuarios')
+@Entity('participantes')
 @Index(['cedula'], { unique: true })
-export class UsuarioEntity {
+export class ParticipanteEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
@@ -31,12 +31,12 @@ export class UsuarioEntity {
   @Column({ type: 'boolean', default: true })
   activo: boolean;
 
-  @CreateDateColumn({ type: 'timestamptz' })
-  fecha_registro: Date;
+  @CreateDateColumn({ name: 'fecha_registro', type: 'timestamptz' })
+  fechaRegistro: Date;
 
-  @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
-  fecha_actualizacion: Date;
+  @Column({ name: 'fecha_actualizacion', type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
+  fechaActualizacion: Date;
 
-  @OneToMany('ParticipacionEventoEntity', 'usuario')
+  @OneToMany('ParticipacionEventoEntity', 'participante')
   participaciones: import('../../participaciones/entities/participacion-evento.entity').ParticipacionEventoEntity[];
 }

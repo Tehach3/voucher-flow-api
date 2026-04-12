@@ -2,14 +2,25 @@ import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
+import * as express from 'express';
+import { Request, Response, NextFunction } from 'express';
 import { AppModule } from './app.module';
 import { AppValidationPipe } from './common/pipes/validation.pipe';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
+// Tamaño máximo permitido para el body (imágenes base64 de hasta ~7 MB)
+const MAX_BODY_SIZE = '10mb';
+
 async function bootstrap(): Promise<void> {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule);
+
+  // Deshabilitar body parser interno para configurar límite manualmente
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
+
+  // Body parsers con límite ampliado para soportar imágenes en base64
+  app.use(express.json({ limit: MAX_BODY_SIZE }));
+  app.use(express.urlencoded({ limit: MAX_BODY_SIZE, extended: true }));
 
   // Security headers (exclude swagger paths from CSP restrictions)
   app.use(
@@ -44,7 +55,7 @@ async function bootstrap(): Promise<void> {
     )
     .addTag('health', 'Estado del servicio')
     .addTag('eventos', 'Gestión de eventos/sorteos')
-    .addTag('usuarios', 'Gestión de participantes')
+    .addTag('participantes', 'Gestión de participantes')
     .addTag('tickets', 'Registro de tickets/vouchers y consulta de cupones')
     .addTag('imagenes', 'Upload de imágenes')
     .build();
@@ -53,6 +64,35 @@ async function bootstrap(): Promise<void> {
   SwaggerModule.setup('api/docs', app, document, {
     swaggerOptions: { persistAuthorization: true },
   });
+
+  // Manejo de errores Express antes de que lleguen al pipeline de NestJS
+  // (body demasiado grande ocurre en la capa de middleware, no en los filtros de NestJS)
+  app.use(
+    (
+      err: { type?: string; status?: number; message?: string },
+      req: Request,
+      res: Response,
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      _next: NextFunction,
+    ) => {
+      if (err.type === 'entity.too.large') {
+        res.status(413).json({
+          statusCode: 413,
+          message: `El cuerpo de la solicitud supera el límite permitido de ${MAX_BODY_SIZE}. Las imágenes en base64 no deben superar los 7 MB.`,
+          path: req.url,
+          timestamp: new Date().toISOString(),
+        });
+        return;
+      }
+
+      res.status(err.status ?? 500).json({
+        statusCode: err.status ?? 500,
+        message: err.message ?? 'Error interno del servidor',
+        path: req.url,
+        timestamp: new Date().toISOString(),
+      });
+    },
+  );
 
   const port = parseInt(process.env.PORT ?? '3000', 10);
   await app.listen(port);

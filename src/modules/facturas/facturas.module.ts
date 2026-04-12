@@ -5,14 +5,14 @@ import { TicketPendienteEntity } from './entities/ticket-pendiente.entity';
 import { ParticipacionEventoEntity } from '../participaciones/entities/participacion-evento.entity';
 import { FacturasService } from './facturas.service';
 import { FacturasController } from './facturas.controller';
-import { UsuariosModule } from '../usuarios/usuarios.module';
+import { ParticipantesModule } from '../participantes/participantes.module';
 import { EventosModule } from '../eventos/eventos.module';
 import { ServicesModule } from '../../services/services.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([FacturaEntity, TicketPendienteEntity, ParticipacionEventoEntity]),
-    UsuariosModule,
+    ParticipantesModule,
     EventosModule,
     ServicesModule,
   ],

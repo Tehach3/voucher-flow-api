@@ -95,11 +95,11 @@ export class CloudinaryService {
       const fullText: string = ocrRaw.data?.[0]?.fullTextAnnotation?.text ?? '';
 
       return {
-        numero_factura: null,
+        numeroTicket: null,
         fecha: null,
         monto: null,
         confidence: ocrRaw.data?.[0]?.fullTextAnnotation?.pages?.[0]?.confidence ?? 0,
-        raw_text: fullText,
+        rawText: fullText,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

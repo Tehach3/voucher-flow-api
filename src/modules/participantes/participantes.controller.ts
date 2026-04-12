@@ -18,18 +18,18 @@ import {
   ApiParam,
   ApiQuery,
 } from '@nestjs/swagger';
-import { UsuariosService } from './usuarios.service';
-import { ActualizarUsuarioDto } from '../../common/dtos/actualizar-usuario.dto';
+import { ParticipantesService } from './participantes.service';
+import { ActualizarParticipanteDto } from '../../common/dtos/actualizar-participante.dto';
 import { PaginationDto } from '../../common/dtos/pagination.dto';
 import { ApiKeyGuard } from '../../common/guards/api-key.guard';
 
-@ApiTags('usuarios')
+@ApiTags('participantes')
 @ApiSecurity('x-api-key')
 @ApiUnauthorizedResponse({ description: 'API Key inválida o ausente' })
-@Controller('usuarios')
+@Controller('participantes')
 @UseGuards(ApiKeyGuard)
-export class UsuariosController {
-  constructor(private readonly usuariosService: UsuariosService) {}
+export class ParticipantesController {
+  constructor(private readonly participantesService: ParticipantesService) {}
 
   @Get()
   @ApiOperation({ summary: 'Listar participantes (paginado)' })
@@ -37,7 +37,7 @@ export class UsuariosController {
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
   @ApiOkResponse({ description: 'Lista paginada de participantes' })
   async findAll(@Query() pagination: PaginationDto) {
-    return await this.usuariosService.findAll(pagination);
+    return await this.participantesService.findAll(pagination);
   }
 
   @Get(':cedula')
@@ -46,7 +46,7 @@ export class UsuariosController {
   @ApiOkResponse({ description: 'Datos del participante' })
   @ApiNotFoundResponse({ description: 'Participante no encontrado' })
   async findByCedula(@Param('cedula') cedula: string) {
-    return await this.usuariosService.findByCedula(cedula);
+    return await this.participantesService.findByCedula(cedula);
   }
 
   @Patch(':cedula')
@@ -55,10 +55,10 @@ export class UsuariosController {
   @ApiOkResponse({ description: 'Participante actualizado' })
   @ApiNotFoundResponse({ description: 'Participante no encontrado' })
   @ApiBadRequestResponse({ description: 'Datos inválidos' })
-  async updateUsuario(
+  async updateParticipante(
     @Param('cedula') cedula: string,
-    @Body() dto: ActualizarUsuarioDto,
+    @Body() dto: ActualizarParticipanteDto,
   ) {
-    return await this.usuariosService.updateUsuario(cedula, dto);
+    return await this.participantesService.updateParticipante(cedula, dto);
   }
 }

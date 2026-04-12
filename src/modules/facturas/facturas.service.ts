@@ -12,7 +12,7 @@ import { Repository, DataSource } from 'typeorm';
 import { FacturaEntity } from './entities/factura.entity';
 import { TicketPendienteEntity, DatosFormulario, EtapaError, MAX_INTENTOS } from './entities/ticket-pendiente.entity';
 import { ParticipacionEventoEntity } from '../participaciones/entities/participacion-evento.entity';
-import { UsuariosService } from '../usuarios/usuarios.service';
+import { ParticipantesService } from '../participantes/participantes.service';
 import { EventosService } from '../eventos/eventos.service';
 import { CloudinaryService } from '../../services/cloudinary.service';
 import { RegistrarParticipacionDto, ProductoFacturaDto } from '../../common/dtos/registrar-participacion.dto';
@@ -20,7 +20,7 @@ import { FiltrarTicketsDto } from '../../common/dtos/filtrar-tickets.dto';
 import { FiltrarPendientesDto } from '../../common/dtos/filtrar-pendientes.dto';
 import { CondicionCupon } from '../eventos/entities/evento.entity';
 import { SKU_CUPONES } from '../../common/constants/sku.constants';
-import { UsuarioEntity } from '../usuarios/entities/usuario.entity';
+import { ParticipanteEntity } from '../participantes/entities/participante.entity';
 import { IEvento } from '../../common/interfaces/evento.interface';
 import {
   IRegistroParticipacionResponse,
@@ -41,7 +41,7 @@ import {
 // Estado intermedio que comparten registrarParticipacion y reintentarTicketPendiente
 interface ContextoRegistro {
   evento: IEvento;
-  usuario: UsuarioEntity;
+  participante: ParticipanteEntity;
   esNuevo: boolean;
   participacion: ParticipacionEventoEntity;
 }
@@ -58,7 +58,7 @@ export class FacturasService {
     @InjectRepository(ParticipacionEventoEntity)
     private readonly participacionesRepository: Repository<ParticipacionEventoEntity>,
     private readonly dataSource: DataSource,
-    private readonly usuariosService: UsuariosService,
+    private readonly participantesService: ParticipantesService,
     private readonly eventosService: EventosService,
     private readonly cloudinaryService: CloudinaryService,
   ) {}
@@ -182,7 +182,7 @@ export class FacturasService {
 
     const qb = this.pendientesRepository
       .createQueryBuilder('p')
-      .orderBy('p.fecha_registro', 'DESC');
+      .orderBy('p.fechaRegistro', 'DESC');
 
     if (estado) {
       qb.andWhere('p.estado = :estado', { estado });
@@ -219,59 +219,59 @@ export class FacturasService {
   // ── Consultas ─────────────────────────────────────────────────────────────
 
   async getCuponesByCedula(cedula: string): Promise<CuponesUsuarioResponse> {
-    const usuario = await this.usuariosService.findByCedula(cedula);
+    const participante = await this.participantesService.findByCedula(cedula);
 
     const participaciones = await this.participacionesRepository.find({
-      where: { usuario_id: usuario.id, activo: true },
+      where: { participanteId: participante.id, activo: true },
       relations: ['evento', 'facturas'],
-      order: { fecha_registro: 'DESC' },
+      order: { fechaRegistro: 'DESC' },
     });
 
     const campanhas: CampanhaResumen[] = participaciones.map((p) => ({
-      eventoId: p.evento_id,
-      nombre: p.evento?.nombre ?? `Campaña ${p.evento_id}`,
-      cuponesAcumulados: p.cupones_acumulados,
+      eventoId: p.eventoId,
+      nombre: p.evento?.nombre ?? `Campaña ${p.eventoId}`,
+      cuponesAcumulados: p.cuponesAcumulados,
       facturas: (p.facturas ?? [])
-        .sort((a, b) => b.fecha_carga.getTime() - a.fecha_carga.getTime())
+        .sort((a, b) => b.fechaCarga.getTime() - a.fechaCarga.getTime())
         .map((f): FacturaCupon => ({
           id: f.id,
-          numeroTicket: f.numero_factura,
+          numeroTicket: f.numeroTicket,
           local: f.local,
           multiplicador: f.multiplicador,
           coeficienteMultiplicador: f.coeficienteMultiplicador,
           sku: f.sku,
           cantidad: f.cantidad,
-          cuponesBase: f.cupones_base,
-          cuponesGenerados: f.cupones_generados,
-          fotoUrl: f.foto_url,
-          fechaCarga: f.fecha_carga,
+          cuponesBase: f.cuponesBase,
+          cuponesGenerados: f.cuponesGenerados,
+          fotoUrl: f.fotoUrl,
+          fechaCarga: f.fechaCarga,
         })),
     }));
 
-    return { cedula: usuario.cedula, nombre: usuario.nombre, campanhas };
+    return { cedula: participante.cedula, nombre: participante.nombre, campanhas };
   }
 
   async getCuponesByCedulaEvento(cedula: string, evento_id: number): Promise<CuponesResponse> {
-    const usuario = await this.usuariosService.findByCedula(cedula);
+    const participante = await this.participantesService.findByCedula(cedula);
 
     const participacion = await this.participacionesRepository.findOne({
-      where: { usuario_id: usuario.id, evento_id },
+      where: { participanteId: participante.id, eventoId: evento_id },
     });
 
     if (!participacion) {
-      return { cedula, evento_id, cupones_acumulados: 0, total_facturas: 0, facturas: [] };
+      return { cedula, eventoId: evento_id, cuponesAcumulados: 0, totalFacturas: 0, facturas: [] };
     }
 
     const facturas = await this.facturasRepository.find({
-      where: { participacion_id: participacion.id },
-      order: { fecha_carga: 'DESC' },
+      where: { participacionId: participacion.id },
+      order: { fechaCarga: 'DESC' },
     });
 
     return {
       cedula,
-      evento_id,
-      cupones_acumulados: participacion.cupones_acumulados,
-      total_facturas: facturas.length,
+      eventoId: evento_id,
+      cuponesAcumulados: participacion.cuponesAcumulados,
+      totalFacturas: facturas.length,
       facturas: facturas as IFactura[],
     };
   }
@@ -279,7 +279,7 @@ export class FacturasService {
   async getFacturaById(id: number): Promise<IFactura> {
     const factura = await this.facturasRepository.findOne({
       where: { id },
-      relations: ['usuario'],
+      relations: ['participante'],
     });
 
     if (!factura) {
@@ -294,7 +294,7 @@ export class FacturasService {
 
     const qb = this.facturasRepository
       .createQueryBuilder('f')
-      .innerJoin('f.usuario', 'u')
+      .innerJoin('f.participante', 'u')
       .innerJoin('f.evento', 'e')
       .select([
         'f.id                      AS id',
@@ -303,7 +303,7 @@ export class FacturasService {
         'u.ciudad                  AS ciudad',
         'e.id                      AS "eventoId"',
         'e.nombre                  AS "eventoNombre"',
-        'f.numero_factura          AS "numeroTicket"',
+        'f.numero_ticket           AS "numeroTicket"',
         'f.local                   AS local',
         'f.multiplicador           AS multiplicador',
         'f.coeficiente_multiplicador AS "coeficienteMultiplicador"',
@@ -394,7 +394,7 @@ export class FacturasService {
       }
     }
 
-    const { usuario, esNuevo } = await this.usuariosService.findOrCreate({
+    const { participante, esNuevo } = await this.participantesService.findOrCreate({
       cedula, nombre, celular, ciudad, email,
     });
 
@@ -402,10 +402,10 @@ export class FacturasService {
       throw new BadRequestException('nombre es requerido para registrar un nuevo participante');
     }
 
-    await this.dataSource.query('SELECT crear_participacion_evento($1, $2)', [usuario.id, eventoId]);
+    await this.dataSource.query('SELECT crear_participacion_evento($1, $2)', [participante.id, eventoId]);
 
     const participacion = await this.participacionesRepository.findOne({
-      where: { usuario_id: usuario.id, evento_id: eventoId },
+      where: { participanteId: participante.id, eventoId },
     });
 
     if (!participacion) {
@@ -415,9 +415,9 @@ export class FacturasService {
     for (const producto of productos) {
       const existente = await this.facturasRepository.findOne({
         where: {
-          evento_id: eventoId,
-          usuario_id: usuario.id,
-          numero_factura: numeroTicket,
+          eventoId,
+          participanteId: participante.id,
+          numeroTicket,
           sku: producto.sku,
         },
       });
@@ -429,7 +429,7 @@ export class FacturasService {
       }
     }
 
-    return { evento, usuario, esNuevo, participacion };
+    return { evento, participante, esNuevo, participacion };
   }
 
   /**
@@ -441,7 +441,7 @@ export class FacturasService {
     dto: DatosFormulario,
     fotoUrl: string,
   ): Promise<IRegistroParticipacionResponse> {
-    const { evento, usuario, esNuevo, participacion } = contexto;
+    const { evento, participante, esNuevo, participacion } = contexto;
     const { cedula, eventoId, numeroTicket, local, multiplicador, coeficienteMultiplicador, productos } = dto;
     const condiciones = (evento as any).condicionesCupones as CondicionCupon[] | null;
     const coeficiente = multiplicador ? (coeficienteMultiplicador ?? 1) : 1;
@@ -455,19 +455,19 @@ export class FacturasService {
         const cuponesGenerados = this.aplicarMultiplicador(cuponesBase, multiplicador, coeficienteMultiplicador);
 
         const factura = manager.create(FacturaEntity, {
-          usuario_id: usuario.id,
-          evento_id: eventoId,
-          participacion_id: participacion.id,
-          numero_factura: numeroTicket,
+          participanteId: participante.id,
+          eventoId,
+          participacionId: participacion.id,
+          numeroTicket,
           local,
           multiplicador,
           coeficienteMultiplicador: multiplicador ? coeficienteMultiplicador : null,
           sku: producto.sku,
           cantidad: producto.cantidad,
-          cupones_base: cuponesBase,
-          cupones_generados: cuponesGenerados,
-          foto_url: fotoUrl,
-          ocr_data: null,
+          cuponesBase,
+          cuponesGenerados,
+          fotoUrl,
+          ocrData: null,
         });
 
         await manager.save(FacturaEntity, factura);
@@ -487,7 +487,7 @@ export class FacturasService {
       where: { id: participacion.id },
     });
 
-    const cuponesAcumulados = participacionActualizada?.cupones_acumulados ?? totalCuponesGenerados;
+    const cuponesAcumulados = participacionActualizada?.cuponesAcumulados ?? totalCuponesGenerados;
 
     this.logger.log(
       `[TICKETS] Completado — cédula: ${cedula}, local: "${local}", ` +
@@ -501,7 +501,7 @@ export class FacturasService {
         : 'Cupones agregados al participante existente',
       esUsuarioNuevo: esNuevo,
       cedula,
-      nombre: usuario.nombre,
+      nombre: participante.nombre,
       eventoId,
       numeroTicket,
       local,

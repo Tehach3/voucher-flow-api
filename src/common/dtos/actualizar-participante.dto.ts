@@ -2,7 +2,7 @@ import { IsString, IsOptional, IsEmail, Matches, Length } from 'class-validator'
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { REGEX } from '../constants/regex.constants';
 
-export class ActualizarUsuarioDto {
+export class ActualizarParticipanteDto {
   @ApiPropertyOptional({ example: 'Juan Perez' })
   @IsOptional()
   @IsString()

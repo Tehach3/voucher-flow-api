@@ -2,21 +2,21 @@ import { OcrData } from '../../modules/facturas/entities/factura.entity';
 
 export interface IFactura {
   id: number;
-  usuario_id: number;
-  evento_id: number;
-  participacion_id: number;
-  numero_factura: string;
+  participanteId: number;
+  eventoId: number;
+  participacionId: number;
+  numeroTicket: string;
   local: string;
   multiplicador: boolean;
   coeficienteMultiplicador: number | null;
   sku: string;
   cantidad: number;
-  cupones_base: number;
-  cupones_generados: number;
-  foto_url: string;
-  ocr_data: OcrData | null;
+  cuponesBase: number;
+  cuponesGenerados: number;
+  fotoUrl: string;
+  ocrData: OcrData | null;
   activo: boolean;
-  fecha_carga: Date;
+  fechaCarga: Date;
 }
 
 export interface ProductoRegistrado {
@@ -72,9 +72,9 @@ export interface CuponesUsuarioResponse {
 
 export interface CuponesResponse {
   cedula: string;
-  evento_id: number;
-  cupones_acumulados: number;
-  total_facturas: number;
+  eventoId: number;
+  cuponesAcumulados: number;
+  totalFacturas: number;
   facturas: IFactura[];
 }
 

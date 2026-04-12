@@ -8,40 +8,40 @@ import {
   OneToMany,
   Index,
 } from 'typeorm';
-import { UsuarioEntity } from '../../usuarios/entities/usuario.entity';
+import { ParticipanteEntity } from '../../participantes/entities/participante.entity';
 import { EventoEntity } from '../../eventos/entities/evento.entity';
 
 @Entity('participaciones_evento')
-@Index(['usuario_id', 'evento_id'], { unique: true })
+@Index(['participanteId', 'eventoId'], { unique: true })
 export class ParticipacionEventoEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ type: 'integer' })
-  usuario_id: number;
+  @Column({ name: 'participante_id', type: 'integer' })
+  participanteId: number;
 
-  @Column({ type: 'integer' })
-  evento_id: number;
+  @Column({ name: 'evento_id', type: 'integer' })
+  eventoId: number;
 
-  @ManyToOne(() => UsuarioEntity, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'usuario_id' })
-  usuario: UsuarioEntity;
+  @ManyToOne(() => ParticipanteEntity, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'participante_id' })
+  participante: ParticipanteEntity;
 
   @ManyToOne(() => EventoEntity, (evento) => evento.participaciones, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'evento_id' })
   evento: EventoEntity;
 
-  @Column({ type: 'integer', default: 0 })
-  cupones_acumulados: number;
+  @Column({ name: 'cupones_acumulados', type: 'integer', default: 0 })
+  cuponesAcumulados: number;
 
   @Column({ type: 'boolean', default: true })
   activo: boolean;
 
-  @CreateDateColumn({ type: 'timestamptz' })
-  fecha_registro: Date;
+  @CreateDateColumn({ name: 'fecha_registro', type: 'timestamptz' })
+  fechaRegistro: Date;
 
-  @Column({ type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
-  fecha_actualizacion: Date;
+  @Column({ name: 'fecha_actualizacion', type: 'timestamptz', default: () => 'CURRENT_TIMESTAMP' })
+  fechaActualizacion: Date;
 
   @OneToMany('FacturaEntity', 'participacion')
   facturas: import('../../facturas/entities/factura.entity').FacturaEntity[];

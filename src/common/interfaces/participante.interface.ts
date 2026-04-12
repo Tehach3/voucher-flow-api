@@ -1,4 +1,4 @@
-export interface IUsuario {
+export interface IParticipante {
   id: number;
   cedula: string;
   nombre: string;
@@ -6,11 +6,11 @@ export interface IUsuario {
   ciudad: string | null;
   email: string | null;
   activo: boolean;
-  fecha_registro: Date;
-  fecha_actualizacion: Date;
+  fechaRegistro: Date;
+  fechaActualizacion: Date;
 }
 
-export interface IUsuarioPublico {
+export interface IParticipantePublico {
   cedula: string;
   nombre: string;
   celular: string | null;

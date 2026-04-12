@@ -5,27 +5,27 @@ export class AuditoriaEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ type: 'varchar', length: 50 })
-  evento_tipo: string;
+  @Column({ name: 'evento_tipo', type: 'varchar', length: 50 })
+  eventoTipo: string;
 
   @Column({ type: 'varchar', length: 50 })
   entidad: string;
 
-  @Column({ type: 'integer', nullable: true })
-  entidad_id: number | null;
+  @Column({ name: 'entidad_id', type: 'integer', nullable: true })
+  entidadId: number | null;
 
-  @Column({ type: 'integer', nullable: true })
-  usuario_id: number | null;
+  @Column({ name: 'usuario_id', type: 'integer', nullable: true })
+  usuarioId: number | null;
 
-  @Column({ type: 'varchar', length: 45, nullable: true })
-  ip_address: string | null;
+  @Column({ name: 'ip_address', type: 'varchar', length: 45, nullable: true })
+  ipAddress: string | null;
 
-  @Column({ type: 'jsonb', nullable: true })
-  datos_anteriores: Record<string, unknown> | null;
+  @Column({ name: 'datos_anteriores', type: 'jsonb', nullable: true })
+  datosAnteriores: Record<string, unknown> | null;
 
-  @Column({ type: 'jsonb', nullable: true })
-  datos_nuevos: Record<string, unknown> | null;
+  @Column({ name: 'datos_nuevos', type: 'jsonb', nullable: true })
+  datosNuevos: Record<string, unknown> | null;
 
-  @CreateDateColumn({ type: 'timestamptz' })
-  fecha_evento: Date;
+  @CreateDateColumn({ name: 'fecha_evento', type: 'timestamptz' })
+  fechaEvento: Date;
 }
