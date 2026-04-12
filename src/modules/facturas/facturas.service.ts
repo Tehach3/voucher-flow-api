@@ -394,6 +394,34 @@ export class FacturasService {
       }
     }
 
+    // Validar que el nombre coincida si el participante ya existe en el sistema
+    if (nombre) {
+      try {
+        const existente = await this.participantesService.findByCedula(cedula);
+        const nombreRegistrado = existente.nombre.trim().toLowerCase();
+        const nombreRecibido = nombre.trim().toLowerCase();
+        if (nombreRegistrado !== nombreRecibido) {
+          throw new ConflictException(
+            `El número de cédula ya está registrado pero el nombre no coincide con el registrado`,
+          );
+        }
+      } catch (error) {
+        // NotFoundException → participante nuevo, no hay conflicto de nombre
+        if (!(error instanceof NotFoundException)) throw error;
+      }
+    }
+
+    // Verificar que el número de ticket no haya sido usado ya en esta campaña por ningún participante
+    const ticketEnCampaña = await this.facturasRepository.findOne({
+      where: { eventoId, numeroTicket },
+    });
+
+    if (ticketEnCampaña) {
+      throw new ConflictException(
+        `El número de factura ingresado ya generó cupones en esta campaña`,
+      );
+    }
+
     const { participante, esNuevo } = await this.participantesService.findOrCreate({
       cedula, nombre, celular, ciudad, email,
     });
@@ -410,23 +438,6 @@ export class FacturasService {
 
     if (!participacion) {
       throw new BadRequestException('No se pudo registrar la participación en la campaña');
-    }
-
-    for (const producto of productos) {
-      const existente = await this.facturasRepository.findOne({
-        where: {
-          eventoId,
-          participanteId: participante.id,
-          numeroTicket,
-          sku: producto.sku,
-        },
-      });
-
-      if (existente) {
-        throw new ConflictException(
-          `El producto ${producto.sku} del ticket ${numeroTicket} ya fue registrado para esta cédula en esta campaña`,
-        );
-      }
     }
 
     return { evento, participante, esNuevo, participacion };
