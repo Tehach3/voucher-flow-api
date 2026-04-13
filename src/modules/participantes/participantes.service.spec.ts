@@ -13,10 +13,10 @@ const mockParticipante = (): ParticipanteEntity =>
     ciudad: 'Caracas',
     email: null,
     activo: true,
-    fecha_registro: new Date(),
-    fecha_actualizacion: new Date(),
+    fechaRegistro: new Date(),
+    fechaActualizacion: new Date(),
     participaciones: [],
-  }) as ParticipanteEntity;
+  }) as unknown as ParticipanteEntity;
 
 const mockRepository = () => ({
   findOne: jest.fn(),
@@ -141,12 +141,13 @@ describe('ParticipantesService', () => {
     it('actualiza solo los campos provistos', async () => {
       const participante = mockParticipante();
       repo.findOne.mockResolvedValue(participante);
-      repo.save.mockResolvedValue({ ...participante, nombre: 'Nuevo Nombre' });
+      repo.save.mockImplementation((u: ParticipanteEntity) => Promise.resolve(u));
 
       const result = await service.updateParticipante('12345678', { nombre: 'Nuevo Nombre' });
 
-      expect(repo.save).toHaveBeenCalled();
-      expect(result.nombre).toBe('Nuevo Nombre');
+      const saved: ParticipanteEntity = repo.save.mock.calls[0][0];
+      expect(saved.nombre).toBe('Nuevo Nombre');
+      expect(result).not.toHaveProperty('nombre'); // PII no se expone en el response público
     });
 
     it('no modifica campos no incluidos en el DTO', async () => {
@@ -190,7 +191,8 @@ describe('ParticipantesService', () => {
       const result = await service.findAll({ page: 1, limit: 20, offset: 0 });
 
       expect(result.data[0]).not.toHaveProperty('id');
-      expect(result.data[0]).toHaveProperty('cedula');
+      expect(result.data[0]).not.toHaveProperty('cedula');
+      expect(result.data[0]).toHaveProperty('ciudad');
     });
 
     it('retorna data vacía y total 0 cuando no hay usuarios', async () => {

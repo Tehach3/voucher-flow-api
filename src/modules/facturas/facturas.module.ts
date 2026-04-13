@@ -8,6 +8,7 @@ import { FacturasController } from './facturas.controller';
 import { ParticipantesModule } from '../participantes/participantes.module';
 import { EventosModule } from '../eventos/eventos.module';
 import { ServicesModule } from '../../services/services.module';
+import { AuditoriaModule } from '../auditoria/auditoria.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { ServicesModule } from '../../services/services.module';
     ParticipantesModule,
     EventosModule,
     ServicesModule,
+    AuditoriaModule,
   ],
   controllers: [FacturasController],
   providers: [FacturasService],

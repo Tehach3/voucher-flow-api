@@ -74,6 +74,11 @@ export class ParticipantesService {
     return participante;
   }
 
+  async findByCedulaPublico(cedula: string): Promise<IParticipantePublico> {
+    const participante = await this.findByCedula(cedula);
+    return this.toPublico(participante as ParticipanteEntity);
+  }
+
   async findAll(pagination: PaginationDto): Promise<ParticipantesPaginados> {
     const [data, total] = await this.participantesRepository.findAndCount({
       order: { fechaRegistro: 'DESC' },
@@ -111,11 +116,7 @@ export class ParticipantesService {
 
   private toPublico(participante: ParticipanteEntity): IParticipantePublico {
     return {
-      cedula: participante.cedula,
-      nombre: participante.nombre,
-      celular: participante.celular,
       ciudad: participante.ciudad,
-      email: participante.email,
     };
   }
 }

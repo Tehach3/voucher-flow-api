@@ -4,6 +4,9 @@ export class Initial1711000000000 implements MigrationInterface {
   name = 'Initial1711000000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
+    // ── extensiones ───────────────────────────────────────────────────────────
+    await queryRunner.query(`CREATE EXTENSION IF NOT EXISTS pgcrypto`);
+
     // ── eventos ──────────────────────────────────────────────────────────────
     await queryRunner.query(`
       CREATE TABLE "eventos" (
@@ -34,15 +37,15 @@ export class Initial1711000000000 implements MigrationInterface {
     // ── participantes ─────────────────────────────────────────────────────────
     await queryRunner.query(`
       CREATE TABLE "participantes" (
-        "id"                  SERIAL        PRIMARY KEY,
-        "cedula"              VARCHAR(10)   NOT NULL  UNIQUE,
-        "nombre"              VARCHAR(255)  NOT NULL,
-        "celular"             VARCHAR(20),
+        "id"                  SERIAL       PRIMARY KEY,
+        "cedula"              VARCHAR(10)  NOT NULL  UNIQUE,
+        "nombre"              TEXT         NOT NULL,
+        "celular"             TEXT,
         "ciudad"              VARCHAR(100),
-        "email"               VARCHAR(255),
-        "activo"              BOOLEAN       NOT NULL  DEFAULT TRUE,
-        "fecha_registro"      TIMESTAMPTZ   NOT NULL  DEFAULT NOW(),
-        "fecha_actualizacion" TIMESTAMPTZ   NOT NULL  DEFAULT NOW()
+        "email"               TEXT,
+        "activo"              BOOLEAN      NOT NULL  DEFAULT TRUE,
+        "fecha_registro"      TIMESTAMPTZ  NOT NULL  DEFAULT NOW(),
+        "fecha_actualizacion" TIMESTAMPTZ  NOT NULL  DEFAULT NOW()
       )
     `);
     await queryRunner.query(`CREATE INDEX "idx_participantes_activo"         ON "participantes" ("activo")`);
@@ -81,6 +84,7 @@ export class Initial1711000000000 implements MigrationInterface {
         "cupones_base"              INTEGER       NOT NULL,
         "cupones_generados"         INTEGER       NOT NULL,
         "foto_url"                  VARCHAR(500)  NOT NULL,
+        "foto_hash"                 VARCHAR(64),
         "ocr_data"                  JSONB,
         "fecha_carga"               TIMESTAMPTZ   NOT NULL  DEFAULT NOW(),
         "activo"                    BOOLEAN       NOT NULL  DEFAULT TRUE,
@@ -198,6 +202,7 @@ export class Initial1711000000000 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`DROP EXTENSION IF EXISTS pgcrypto`);
     await queryRunner.query(`DROP FUNCTION IF EXISTS crear_participacion_evento(INTEGER, INTEGER)`);
     await queryRunner.query(`DROP FUNCTION IF EXISTS actualizar_cupones_participacion() CASCADE`);
     await queryRunner.query(`DROP FUNCTION IF EXISTS actualizar_fecha_actualizacion() CASCADE`);

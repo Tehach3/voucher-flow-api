@@ -73,6 +73,10 @@ export class FacturaEntity {
   @Column({ name: 'foto_url', type: 'varchar', length: 500 })
   fotoUrl: string;
 
+  /** SHA-256 del contenido base64 de la imagen. Nullable: se llena solo cuando SECURITY_IMAGE_HASH_ENABLED=true */
+  @Column({ name: 'foto_hash', type: 'varchar', length: 64, nullable: true })
+  fotoHash: string | null;
+
   @Column({ name: 'ocr_data', type: 'jsonb', nullable: true })
   ocrData: OcrData | null;
 

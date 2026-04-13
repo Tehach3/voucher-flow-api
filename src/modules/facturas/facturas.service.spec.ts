@@ -31,10 +31,10 @@ const mockParticipanteFixture = (): ParticipanteEntity =>
     ciudad: 'Caracas',
     email: null,
     activo: true,
-    fecha_registro: new Date(),
-    fecha_actualizacion: new Date(),
+    fechaRegistro: new Date(),
+    fechaActualizacion: new Date(),
     participaciones: [],
-  }) as ParticipanteEntity;
+  }) as unknown as ParticipanteEntity;
 
 const makeEvento = (overrides: Partial<EventoEntity> = {}): EventoEntity => {
   const now = new Date();
@@ -172,7 +172,7 @@ const mockEventosService = () => ({
 });
 
 const mockCloudinaryService = () => ({
-  upload: jest.fn().mockResolvedValue({
+  uploadBase64: jest.fn().mockResolvedValue({
     url: 'https://res.cloudinary.com/demo/sample.jpg',
     publicId: 'stub/id',
   }),
@@ -217,13 +217,16 @@ describe('FacturasService', () => {
   // ── registrarParticipacion — happy paths ──────────────────────────────────
 
   describe('registrarParticipacion — happy paths', () => {
-    const baseDto: RegistrarParticipacionDto = {
+    const baseDto = {
       cedula: '12345678',
       nombre: 'Juan Perez',
       eventoId: 1,
       numeroTicket: 'TKT-001',
+      local: 'Super Test',
+      multiplicador: false,
+      fotoBase64: 'data:image/jpeg;base64,/9j/stub',
       productos: [{ sku: '1kg', cantidad: 2 }],
-    };
+    } as unknown as RegistrarParticipacionDto;
 
     const setupHappyPath = (esNuevo = false) => {
       eventosService.findById.mockResolvedValue(makeEvento());
@@ -327,13 +330,16 @@ describe('FacturasService', () => {
   // ── registrarParticipacion — validaciones 4xx (sin guardar pendiente) ──────
 
   describe('registrarParticipacion — validaciones de negocio', () => {
-    const baseDto: RegistrarParticipacionDto = {
+    const baseDto = {
       cedula: '12345678',
       nombre: 'Juan Perez',
       eventoId: 1,
       numeroTicket: 'TKT-001',
+      local: 'Super Test',
+      multiplicador: false,
+      fotoBase64: 'data:image/jpeg;base64,/9j/stub',
       productos: [{ sku: '1kg', cantidad: 2 }],
-    };
+    } as unknown as RegistrarParticipacionDto;
 
     it('lanza 400 cuando el evento no está activo, sin tocar Cloudinary', async () => {
       eventosService.findById.mockResolvedValue(makeEvento({ activo: false }));
@@ -399,13 +405,16 @@ describe('FacturasService', () => {
   // ── registrarParticipacion — fallback a pendientes ────────────────────────
 
   describe('registrarParticipacion — fallback a pendientes', () => {
-    const baseDto: RegistrarParticipacionDto = {
+    const baseDto = {
       cedula: '12345678',
       nombre: 'Juan Perez',
       eventoId: 1,
       numeroTicket: 'TKT-001',
+      local: 'Super Test',
+      multiplicador: false,
+      fotoBase64: 'data:image/jpeg;base64,/9j/stub',
       productos: [{ sku: '1kg', cantidad: 2 }],
-    };
+    } as unknown as RegistrarParticipacionDto;
 
     const setupValidations = () => {
       eventosService.findById.mockResolvedValue(makeEvento());

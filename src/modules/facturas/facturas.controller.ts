@@ -9,6 +9,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
+  Ip,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -28,6 +29,7 @@ import { RegistrarParticipacionDto } from '../../common/dtos/registrar-participa
 import { FiltrarTicketsDto } from '../../common/dtos/filtrar-tickets.dto';
 import { FiltrarPendientesDto } from '../../common/dtos/filtrar-pendientes.dto';
 import { ApiKeyGuard } from '../../common/guards/api-key.guard';
+import { HmacGuard } from '../../common/guards/hmac.guard';
 
 @ApiTags('tickets')
 @ApiSecurity('x-api-key')
@@ -55,6 +57,7 @@ export class FacturasController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @UseGuards(HmacGuard)
   @ApiOperation({
     summary: 'Registrar participación en una campaña',
     description:
@@ -130,8 +133,8 @@ export class FacturasController {
   })
   @ApiConflictResponse({ description: 'Ticket duplicado para este participante en la campaña' })
   @ApiBadRequestResponse({ description: 'Datos inválidos, campaña no activa o SKU no válido para la campaña' })
-  async registrarParticipacion(@Body() dto: RegistrarParticipacionDto) {
-    return await this.facturasService.registrarParticipacion(dto);
+  async registrarParticipacion(@Body() dto: RegistrarParticipacionDto, @Ip() ip: string) {
+    return await this.facturasService.registrarParticipacion(dto, ip);
   }
 
   // ── Pendientes ────────────────────────────────────────────────────────────

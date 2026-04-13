@@ -11,9 +11,5 @@ export interface IParticipante {
 }
 
 export interface IParticipantePublico {
-  cedula: string;
-  nombre: string;
-  celular: string | null;
   ciudad: string | null;
-  email: string | null;
 }

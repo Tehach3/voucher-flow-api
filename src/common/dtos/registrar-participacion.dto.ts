@@ -15,7 +15,7 @@ import {
   ValidateNested,
   ValidateIf,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Type, Transform } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { REGEX } from '../constants/regex.constants';
 import { SKU_VALUES } from '../constants/sku.constants';
@@ -116,12 +116,17 @@ export class RegistrarParticipacionDto {
     example: 2,
     description:
       'Coeficiente del multiplicador (2 = x2, 3 = x3, etc.). ' +
-      'Requerido y mínimo 2 cuando multiplicador=true. Los cupones generados se multiplican por este valor.',
-    minimum: 2,
+      'Requerido cuando multiplicador=true. Si se envía un valor <= 0 se normaliza a 1 (sin efecto multiplicador).',
+    minimum: 1,
   })
   @ValidateIf((o) => o.multiplicador === true)
+  @Transform(({ value }) => {
+    if (value === undefined || value === null) return value;
+    const n = Number(value);
+    return n <= 0 ? 1 : n;
+  })
   @IsInt({ message: 'coeficienteMultiplicador debe ser un número entero' })
-  @Min(2, { message: 'coeficienteMultiplicador debe ser al menos 2' })
+  @Min(1, { message: 'coeficienteMultiplicador debe ser al menos 1' })
   @IsNotEmpty({ message: 'coeficienteMultiplicador es requerido cuando multiplicador=true' })
   coeficienteMultiplicador?: number;
 

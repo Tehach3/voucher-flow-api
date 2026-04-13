@@ -6,6 +6,7 @@ import {
   OneToMany,
   Index,
 } from 'typeorm';
+import { encryptionTransformer } from '../../../common/utils/crypto.utils';
 
 @Entity('participantes')
 @Index(['cedula'], { unique: true })
@@ -16,16 +17,16 @@ export class ParticipanteEntity {
   @Column({ type: 'varchar', length: 10 })
   cedula: string;
 
-  @Column({ type: 'varchar', length: 255 })
+  @Column({ type: 'text', transformer: encryptionTransformer })
   nombre: string;
 
-  @Column({ type: 'varchar', length: 20, nullable: true })
+  @Column({ type: 'text', nullable: true, transformer: encryptionTransformer })
   celular: string | null;
 
   @Column({ type: 'varchar', length: 100, nullable: true })
   ciudad: string | null;
 
-  @Column({ type: 'varchar', length: 255, nullable: true })
+  @Column({ type: 'text', nullable: true, transformer: encryptionTransformer })
   email: string | null;
 
   @Column({ type: 'boolean', default: true })

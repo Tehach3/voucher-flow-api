@@ -1,0 +1,76 @@
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  UnauthorizedException,
+  Logger,
+} from '@nestjs/common';
+import * as crypto from 'crypto';
+import { Request } from 'express';
+import { securityConfig } from '../../config/security.config';
+
+/**
+ * Guard HMAC — verifica que cada request esté firmado por la app cliente.
+ *
+ * El cliente debe enviar:
+ *   X-Timestamp:  Unix timestamp en segundos (ej. "1713000000")
+ *   X-Signature:  HMAC-SHA256( rawBody + X-Timestamp, APP_HMAC_SECRET ) en hex
+ *
+ * Si SECURITY_HMAC_ENABLED !== 'true', el guard se desactiva completamente.
+ * Requiere que main.ts capture el raw body antes del JSON parser (ver rawBody en Request).
+ */
+@Injectable()
+export class HmacGuard implements CanActivate {
+  private readonly logger = new Logger(HmacGuard.name);
+
+  canActivate(context: ExecutionContext): boolean {
+    const { hmac } = securityConfig;
+    if (!hmac.enabled) return true;
+
+    const req = context.switchToHttp().getRequest<Request & { rawBody?: string }>();
+    const signature = req.headers['x-signature'] as string | undefined;
+    const timestamp  = req.headers['x-timestamp']  as string | undefined;
+
+    if (!signature || !timestamp) {
+      throw new UnauthorizedException('Firma de request ausente (X-Signature / X-Timestamp)');
+    }
+
+    const ts  = parseInt(timestamp, 10);
+    const now = Math.floor(Date.now() / 1000);
+
+    if (isNaN(ts) || Math.abs(now - ts) > hmac.windowSecs) {
+      throw new UnauthorizedException(
+        `Timestamp expirado o fuera del rango permitido (±${hmac.windowSecs}s)`,
+      );
+    }
+
+    if (!hmac.secret) {
+      this.logger.error('[HMAC] APP_HMAC_SECRET no está configurado');
+      throw new UnauthorizedException('Configuración de firma incompleta en el servidor');
+    }
+
+    const rawBody  = req.rawBody ?? '';
+    const expected = crypto
+      .createHmac('sha256', hmac.secret)
+      .update(`${rawBody}${timestamp}`)
+      .digest('hex');
+
+    // timingSafeEqual previene ataques de timing
+    let isValid: boolean;
+    try {
+      isValid = crypto.timingSafeEqual(
+        Buffer.from(signature.padEnd(expected.length, ' ')),
+        Buffer.from(expected),
+      );
+    } catch {
+      isValid = false;
+    }
+
+    if (!isValid) {
+      this.logger.warn(`[HMAC] Firma inválida — IP: ${req.ip}`);
+      throw new UnauthorizedException('Firma inválida');
+    }
+
+    return true;
+  }
+}

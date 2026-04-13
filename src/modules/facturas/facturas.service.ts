@@ -9,12 +9,14 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
+import * as crypto from 'crypto';
 import { FacturaEntity } from './entities/factura.entity';
 import { TicketPendienteEntity, DatosFormulario, EtapaError, MAX_INTENTOS } from './entities/ticket-pendiente.entity';
 import { ParticipacionEventoEntity } from '../participaciones/entities/participacion-evento.entity';
 import { ParticipantesService } from '../participantes/participantes.service';
 import { EventosService } from '../eventos/eventos.service';
 import { CloudinaryService } from '../../services/cloudinary.service';
+import { AuditoriaService } from '../auditoria/auditoria.service';
 import { RegistrarParticipacionDto, ProductoFacturaDto } from '../../common/dtos/registrar-participacion.dto';
 import { FiltrarTicketsDto } from '../../common/dtos/filtrar-tickets.dto';
 import { FiltrarPendientesDto } from '../../common/dtos/filtrar-pendientes.dto';
@@ -37,6 +39,7 @@ import {
   ResultadoReintento,
   ResultadoLoteReintento,
 } from '../../common/interfaces/factura.interface';
+import { securityConfig } from '../../config/security.config';
 
 // Estado intermedio que comparten registrarParticipacion y reintentarTicketPendiente
 interface ContextoRegistro {
@@ -61,19 +64,39 @@ export class FacturasService {
     private readonly participantesService: ParticipantesService,
     private readonly eventosService: EventosService,
     private readonly cloudinaryService: CloudinaryService,
+    private readonly auditoriaService: AuditoriaService,
   ) {}
 
   // ── Registro principal ────────────────────────────────────────────────────
 
   async registrarParticipacion(
     dto: RegistrarParticipacionDto,
+    ipAddress?: string,
   ): Promise<IRegistroParticipacionResponse> {
     const { cedula, eventoId, fotoBase64 } = dto;
-    this.logger.log(`[TICKETS] Inicio registro — cédula: ${cedula}, evento: ${eventoId}`);
+    this.logger.log(`[TICKETS] Inicio registro — evento: ${eventoId}`);
+
+    // Fase 0 (opcional): verificar unicidad de imagen antes de cualquier otra validación
+    const fotoHash = this.calcularHashImagen(fotoBase64);
+    if (fotoHash) {
+      const duplicada = await this.facturasRepository.findOne({
+        where: { eventoId, fotoHash },
+      });
+      if (duplicada) {
+        await this.auditoriaService.registrar({
+          eventoTipo: 'IMAGEN_DUPLICADA',
+          entidad:    'tickets',
+          entidadId:  duplicada.id,
+          ipAddress,
+          datosNuevos: { cedulaHash: AuditoriaService.hashCedula(cedula), eventoId },
+        });
+        throw new ConflictException('Esta imagen ya fue utilizada en esta campaña');
+      }
+    }
 
     // Fases 1-6: validaciones de negocio (fallan con 4xx, nunca guardan pendiente)
     const contexto = await this.validarYPreparar(dto);
-    this.logger.log(`[TICKETS] Validaciones OK — subiendo imagen para cédula: ${cedula}`);
+    this.logger.log(`[TICKETS] Validaciones OK — subiendo imagen`);
 
     // Fase 7: subir imagen a Cloudinary
     const fotoMimetype = this.extraerMimetype(fotoBase64);
@@ -83,11 +106,18 @@ export class FacturasService {
       fotoUrl = url;
     } catch (uploadError) {
       const mensaje = uploadError instanceof Error ? uploadError.message : String(uploadError);
-      this.logger.error(`[TICKETS] Fallo upload para cédula ${cedula}: ${mensaje}`);
+      this.logger.error(`[TICKETS] Fallo upload — evento: ${eventoId}: ${mensaje}`);
 
       const pendiente = await this.guardarPendiente(dto, 'upload_imagen', mensaje, {
         fotoBase64,
         fotoMimetype,
+      });
+      await this.auditoriaService.registrar({
+        eventoTipo: 'TICKET_FALLIDO',
+        entidad:    'tickets_pendientes',
+        entidadId:  pendiente.id,
+        ipAddress,
+        datosNuevos: { cedulaHash: AuditoriaService.hashCedula(cedula), eventoId, etapa: 'upload_imagen', error: mensaje },
       });
       throw new HttpException(
         {
@@ -102,12 +132,32 @@ export class FacturasService {
 
     // Fase 8: persistir en DB
     try {
-      return await this.ejecutarTransaccionDB(contexto, dto, fotoUrl);
+      const resultado = await this.ejecutarTransaccionDB(contexto, dto, fotoUrl, fotoHash);
+      await this.auditoriaService.registrar({
+        eventoTipo: 'TICKET_REGISTRADO',
+        entidad:    'tickets',
+        ipAddress,
+        datosNuevos: {
+          cedulaHash: AuditoriaService.hashCedula(cedula),
+          eventoId,
+          numeroTicket: dto.numeroTicket,
+          local: dto.local,
+          cuponesGenerados: resultado.cuponesGenerados,
+        },
+      });
+      return resultado;
     } catch (dbError) {
       const mensaje = dbError instanceof Error ? dbError.message : String(dbError);
-      this.logger.error(`[TICKETS] Fallo DB para cédula ${cedula}: ${mensaje}`);
+      this.logger.error(`[TICKETS] Fallo DB — evento: ${eventoId}: ${mensaje}`);
 
       const pendiente = await this.guardarPendiente(dto, 'escritura_db', mensaje, { fotoUrl });
+      await this.auditoriaService.registrar({
+        eventoTipo: 'TICKET_FALLIDO',
+        entidad:    'tickets_pendientes',
+        entidadId:  pendiente.id,
+        ipAddress,
+        datosNuevos: { cedulaHash: AuditoriaService.hashCedula(cedula), eventoId, etapa: 'escritura_db', error: mensaje },
+      });
       throw new HttpException(
         {
           statusCode: HttpStatus.SERVICE_UNAVAILABLE,
@@ -248,7 +298,7 @@ export class FacturasService {
         })),
     }));
 
-    return { cedula: participante.cedula, nombre: participante.nombre, campanhas };
+    return { campanhas };
   }
 
   async getCuponesByCedulaEvento(cedula: string, evento_id: number): Promise<CuponesResponse> {
@@ -259,7 +309,7 @@ export class FacturasService {
     });
 
     if (!participacion) {
-      return { cedula, eventoId: evento_id, cuponesAcumulados: 0, totalFacturas: 0, facturas: [] };
+      return { eventoId: evento_id, cuponesAcumulados: 0, totalFacturas: 0, facturas: [] };
     }
 
     const facturas = await this.facturasRepository.find({
@@ -268,7 +318,6 @@ export class FacturasService {
     });
 
     return {
-      cedula,
       eventoId: evento_id,
       cuponesAcumulados: participacion.cuponesAcumulados,
       totalFacturas: facturas.length,
@@ -298,8 +347,6 @@ export class FacturasService {
       .innerJoin('f.evento', 'e')
       .select([
         'f.id                      AS id',
-        'u.cedula                  AS cedula',
-        'u.nombre                  AS nombre',
         'u.ciudad                  AS ciudad',
         'e.id                      AS "eventoId"',
         'e.nombre                  AS "eventoNombre"',
@@ -326,8 +373,6 @@ export class FacturasService {
 
     const data: TicketResumen[] = raw.map((r) => ({
       id: r.id,
-      cedula: r.cedula,
-      nombre: r.nombre,
       ciudad: r.ciudad ?? null,
       eventoId: r.eventoId,
       eventoNombre: r.eventoNombre,
@@ -394,23 +439,6 @@ export class FacturasService {
       }
     }
 
-    // Validar que el nombre coincida si el participante ya existe en el sistema
-    if (nombre) {
-      try {
-        const existente = await this.participantesService.findByCedula(cedula);
-        const nombreRegistrado = existente.nombre.trim().toLowerCase();
-        const nombreRecibido = nombre.trim().toLowerCase();
-        if (nombreRegistrado !== nombreRecibido) {
-          throw new ConflictException(
-            `El número de cédula ya está registrado pero el nombre no coincide con el registrado`,
-          );
-        }
-      } catch (error) {
-        // NotFoundException → participante nuevo, no hay conflicto de nombre
-        if (!(error instanceof NotFoundException)) throw error;
-      }
-    }
-
     // Verificar que el número de ticket no haya sido usado ya en esta campaña por ningún participante
     const ticketEnCampaña = await this.facturasRepository.findOne({
       where: { eventoId, numeroTicket },
@@ -451,6 +479,7 @@ export class FacturasService {
     contexto: ContextoRegistro,
     dto: DatosFormulario,
     fotoUrl: string,
+    fotoHash: string | null = null,
   ): Promise<IRegistroParticipacionResponse> {
     const { evento, participante, esNuevo, participacion } = contexto;
     const { cedula, eventoId, numeroTicket, local, multiplicador, coeficienteMultiplicador, productos } = dto;
@@ -478,6 +507,7 @@ export class FacturasService {
           cuponesBase,
           cuponesGenerados,
           fotoUrl,
+          fotoHash,
           ocrData: null,
         });
 
@@ -511,8 +541,6 @@ export class FacturasService {
         ? 'Participante registrado y cupones asignados correctamente'
         : 'Cupones agregados al participante existente',
       esUsuarioNuevo: esNuevo,
-      cedula,
-      nombre: participante.nombre,
       eventoId,
       numeroTicket,
       local,
@@ -682,5 +710,15 @@ export class FacturasService {
   private extraerMimetype(dataUri: string): string {
     const match = dataUri.match(/^data:(image\/[a-z]+);base64,/);
     return match ? match[1] : 'image/jpeg';
+  }
+
+  /**
+   * Calcula SHA-256 del contenido base64 de la imagen (sin el prefijo data:...).
+   * Retorna null si SECURITY_IMAGE_HASH_ENABLED !== 'true'.
+   */
+  private calcularHashImagen(fotoBase64: string): string | null {
+    if (!securityConfig.imageHash.enabled) return null;
+    const data = fotoBase64.replace(/^data:[^,]+,/, '');
+    return crypto.createHash('sha256').update(data).digest('hex');
   }
 }

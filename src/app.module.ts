@@ -8,6 +8,7 @@ import { ParticipantesModule } from './modules/participantes/participantes.modul
 import { FacturasModule } from './modules/facturas/facturas.module';
 import { ImagenesModule } from './modules/imagenes/imagenes.module';
 import { EventosModule } from './modules/eventos/eventos.module';
+import { AuditoriaModule } from './modules/auditoria/auditoria.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { EventosModule } from './modules/eventos/eventos.module';
     EventosModule,
     FacturasModule,
     ImagenesModule,
+    AuditoriaModule,
   ],
   controllers: [AppController],
   providers: [AppService],

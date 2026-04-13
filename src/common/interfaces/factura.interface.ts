@@ -30,8 +30,6 @@ export interface ProductoRegistrado {
 export interface IRegistroParticipacionResponse {
   mensaje: string;
   esUsuarioNuevo: boolean;
-  cedula: string;
-  nombre: string;
   eventoId: number;
   numeroTicket: string;
   local: string;
@@ -65,13 +63,10 @@ export interface CampanhaResumen {
 }
 
 export interface CuponesUsuarioResponse {
-  cedula: string;
-  nombre: string;
   campanhas: CampanhaResumen[];
 }
 
 export interface CuponesResponse {
-  cedula: string;
   eventoId: number;
   cuponesAcumulados: number;
   totalFacturas: number;
@@ -116,8 +111,6 @@ export interface ResultadoLoteReintento {
 
 export interface TicketResumen {
   id: number;
-  cedula: string;
-  nombre: string;
   ciudad: string | null;
   eventoId: number;
   eventoNombre: string;

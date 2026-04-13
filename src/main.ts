@@ -18,8 +18,16 @@ async function bootstrap(): Promise<void> {
   // Deshabilitar body parser interno para configurar límite manualmente
   const app = await NestFactory.create(AppModule, { bodyParser: false });
 
-  // Body parsers con límite ampliado para soportar imágenes en base64
-  app.use(express.json({ limit: MAX_BODY_SIZE }));
+  // Body parsers con límite ampliado para soportar imágenes en base64.
+  // La opción `verify` captura el raw body antes del parseo — requerido por HmacGuard.
+  app.use(
+    express.json({
+      limit: MAX_BODY_SIZE,
+      verify: (req: any, _res, buf) => {
+        req.rawBody = buf.toString('utf8');
+      },
+    }),
+  );
   app.use(express.urlencoded({ limit: MAX_BODY_SIZE, extended: true }));
 
   // Security headers (exclude swagger paths from CSP restrictions)

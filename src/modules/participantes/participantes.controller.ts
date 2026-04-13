@@ -46,7 +46,7 @@ export class ParticipantesController {
   @ApiOkResponse({ description: 'Datos del participante' })
   @ApiNotFoundResponse({ description: 'Participante no encontrado' })
   async findByCedula(@Param('cedula') cedula: string) {
-    return await this.participantesService.findByCedula(cedula);
+    return await this.participantesService.findByCedulaPublico(cedula);
   }
 
   @Patch(':cedula')
