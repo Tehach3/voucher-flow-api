@@ -8,7 +8,6 @@ import {
   ParseFilePipe,
   MaxFileSizeValidator,
   FileTypeValidator,
-  BadRequestException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
@@ -25,6 +24,8 @@ import {
 import { ImagenesService } from './imagenes.service';
 import { ApiKeyGuard } from '../../common/guards/api-key.guard';
 import { REGEX } from '../../common/constants/regex.constants';
+import { ERROR_CODES } from '../../common/constants/error.constants';
+import { AppException } from '../../common/exceptions/app.exception';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
 
@@ -39,7 +40,7 @@ export class ImagenesController {
   @Post('upload')
   @ApiOperation({ summary: 'Subir imagen directamente a Cloudinary' })
   @ApiConsumes('multipart/form-data')
-  @ApiQuery({ name: 'cedula', required: true, type: String, example: '12345678', description: 'Cédula del participante (8 dígitos)' })
+  @ApiQuery({ name: 'cedula', required: true, type: String, example: '12345678', description: 'Cédula del participante (6-10 dígitos)' })
   @ApiBody({
     description: 'Imagen JPG/PNG hasta 5 MB',
     schema: {
@@ -66,9 +67,9 @@ export class ImagenesController {
     file: Express.Multer.File,
   ) {
     if (!cedula || !REGEX.CEDULA.test(cedula)) {
-      throw new BadRequestException(
-        'Query param cedula es requerido y debe tener exactamente 8 dígitos',
-      );
+      throw AppException.badRequest(ERROR_CODES.VALIDATION_ERROR, {
+        errores: ['cedula debe ser un número de 6 a 10 dígitos'],
+      });
     }
     return await this.imagenesService.subirImagen(file, cedula);
   }

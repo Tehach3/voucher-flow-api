@@ -7,16 +7,28 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { ERROR_CODES } from '../constants/error.constants';
+import { APP_MESSAGES } from '../constants/messages.constants';
 
-interface ErrorResponse {
-  statusCode: number;
-  codigo?: string;
-  message?: string | string[];
-  path: string;
-  timestamp: string;
-  [key: string]: unknown;
-}
-
+/**
+ * Filtro global de excepciones.
+ *
+ * Garantiza que todas las respuestas de error tengan la misma forma:
+ * {
+ *   "statusCode": <HTTP status>,
+ *   "codigo":     <código de error, p.ej. "FAC_001">,
+ *   "sistema":    <mensaje técnico en inglés para logs/debugging>,
+ *   "mensaje":    <mensaje localizado en español para el usuario>,
+ *   "path":       <ruta del request>,
+ *   "timestamp":  <ISO 8601>,
+ *   // campos extra opcionales según el error (errores[], pendienteId, retryAfter, etc.)
+ * }
+ *
+ * - AppException → se pasa directamente (ya trae codigo/sistema/mensaje).
+ * - ValidationPipe (400 con array) → se mapea automáticamente a VAL_001.
+ * - Cualquier otro HttpException sin estructura → se normaliza con código SRV_001.
+ * - Errores no controlados → 500 con SRV_001.
+ */
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpExceptionFilter.name);
@@ -27,7 +39,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
 
     let status: number;
-    let extraFields: Record<string, unknown> = {};
+    let body: Record<string, unknown>;
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -35,44 +47,70 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
       if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
         const resp = exceptionResponse as Record<string, unknown>;
-        // Normaliza: acepta tanto 'message' (inglés) como 'mensaje' (español)
-        const rawMessage = resp['message'] ?? resp['mensaje'] ?? exception.message;
-        // Normaliza: acepta tanto 'code' como 'codigo'
-        const rawCode = resp['codigo'] ?? resp['code'];
-        // Copia todos los campos extra (pendienteId, etc.) excluyendo statusCode
-        const { statusCode: _s, message: _m, mensaje: _mj, code: _c, codigo: _co, ...rest } = resp;
-        extraFields = {
-          message: rawMessage as string | string[],
-          ...(rawCode ? { codigo: rawCode } : {}),
-          ...rest,
-        };
+
+        if (resp['codigo'] && resp['sistema'] && resp['mensaje']) {
+          // AppException: estructura completa — pasar directamente
+          const { statusCode: _s, ...rest } = resp;
+          body = rest;
+        } else {
+          const rawMessage = resp['message'] ?? resp['mensaje'] ?? exception.message;
+
+          if (Array.isArray(rawMessage)) {
+            // ValidationPipe lanza { message: string[], statusCode: 400 }
+            const msgs = APP_MESSAGES[ERROR_CODES.VALIDATION_ERROR];
+            body = {
+              codigo: ERROR_CODES.VALIDATION_ERROR,
+              sistema: msgs.sistema,
+              mensaje: msgs.mensaje,
+              errores: rawMessage,
+            };
+          } else {
+            // HttpException genérico sin código AppException
+            const msg = String(rawMessage);
+            body = {
+              codigo: String(resp['code'] ?? resp['codigo'] ?? ERROR_CODES.INTERNAL_ERROR),
+              sistema: msg,
+              mensaje: msg,
+            };
+          }
+        }
       } else {
-        extraFields = { message: exception.message };
+        body = {
+          codigo: ERROR_CODES.INTERNAL_ERROR,
+          sistema: exception.message,
+          mensaje: exception.message,
+        };
       }
     } else {
+      // Error no controlado (no es HttpException)
       status = HttpStatus.INTERNAL_SERVER_ERROR;
-      extraFields = { message: 'Error interno del servidor' };
+      const msgs = APP_MESSAGES[ERROR_CODES.INTERNAL_ERROR];
+      body = {
+        codigo: ERROR_CODES.INTERNAL_ERROR,
+        sistema: msgs.sistema,
+        mensaje: msgs.mensaje,
+      };
       this.logger.error(
         `[HTTP_EXCEPTION_FILTER] Error no controlado`,
         exception instanceof Error ? exception.stack : String(exception),
       );
     }
 
-    const errorBody: ErrorResponse = {
+    const errorBody: Record<string, unknown> = {
       statusCode: status,
-      ...extraFields,
+      ...body,
       path: request.url,
       timestamp: new Date().toISOString(),
     };
 
     if (status >= 500) {
       this.logger.error(
-        `[${request.method}] ${request.url} → ${status}`,
+        `[${request.method}] ${request.url} → ${status} [${errorBody['codigo']}]`,
         JSON.stringify(errorBody),
       );
     } else if (status >= 400) {
       this.logger.warn(
-        `[${request.method}] ${request.url} → ${status}: ${JSON.stringify(errorBody.message)}`,
+        `[${request.method}] ${request.url} → ${status} [${errorBody['codigo']}]`,
       );
     }
 

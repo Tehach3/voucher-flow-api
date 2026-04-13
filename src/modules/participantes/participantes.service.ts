@@ -1,6 +1,5 @@
 import {
   Injectable,
-  NotFoundException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -9,6 +8,8 @@ import { ParticipanteEntity } from './entities/participante.entity';
 import { ActualizarParticipanteDto } from '../../common/dtos/actualizar-participante.dto';
 import { PaginationDto } from '../../common/dtos/pagination.dto';
 import { IParticipante, IParticipantePublico } from '../../common/interfaces/participante.interface';
+import { ERROR_CODES } from '../../common/constants/error.constants';
+import { AppException } from '../../common/exceptions/app.exception';
 
 export interface FindOrCreateParams {
   cedula: string;
@@ -68,7 +69,7 @@ export class ParticipantesService {
     });
 
     if (!participante) {
-      throw new NotFoundException(`Participante con cédula ${cedula} no encontrado`);
+      throw AppException.notFound(ERROR_CODES.USUARIO_NOT_FOUND);
     }
 
     return participante;
@@ -101,7 +102,7 @@ export class ParticipantesService {
     const participante = await this.participantesRepository.findOne({ where: { cedula } });
 
     if (!participante) {
-      throw new NotFoundException(`Participante con cédula ${cedula} no encontrado`);
+      throw AppException.notFound(ERROR_CODES.USUARIO_NOT_FOUND);
     }
 
     if (dto.nombre !== undefined) participante.nombre = dto.nombre;

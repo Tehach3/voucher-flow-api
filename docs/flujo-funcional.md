@@ -20,6 +20,7 @@ Todos los ejemplos usan `curl`. Sustituir:
 8. [Gestión de participantes](#8-gestión-de-participantes)
 9. [Tickets pendientes y reintentos](#9-tickets-pendientes-y-reintentos)
 10. [Validaciones y errores comunes](#10-validaciones-y-errores-comunes)
+11. [Testing de tickets pendientes con flags de entorno](#11-testing-de-tickets-pendientes-con-flags-de-entorno)
 
 ---
 
@@ -573,14 +574,31 @@ curl -X PATCH http://localhost:3000/api/participantes/4345493 \
 
 ## 9. Tickets pendientes y reintentos
 
-Si Cloudinary falla (Fase 6) o la escritura en BD falla (Fase 7), el ticket se guarda en `tickets_pendientes` y la API responde `503`:
+Si Cloudinary falla (Fase 6) o la escritura en BD falla (Fase 7), el ticket se guarda en `tickets_pendientes` y la API responde `503`.
 
+**Fallo en upload a Cloudinary** — imagen no llegó al storage, se guardó en BD:
 ```json
 {
   "statusCode": 503,
-  "codigo": "UPLOAD_FALLIDO",
-  "mensaje": "Error al procesar la imagen. Sus datos fueron guardados para reintento.",
-  "pendienteId": 5
+  "codigo": "FAC_007",
+  "sistema": "Image upload to Cloudinary failed; ticket data saved as pending for automatic retry",
+  "mensaje": "Error al procesar la imagen. Sus datos fueron guardados para reintento automático",
+  "pendienteId": 5,
+  "path": "/api/tickets",
+  "timestamp": "2026-04-13T..."
+}
+```
+
+**Fallo en escritura en BD** — imagen llegó a Cloudinary, pero los datos no se persistieron:
+```json
+{
+  "statusCode": 503,
+  "codigo": "FAC_008",
+  "sistema": "Database write failed after successful upload; ticket saved as pending for automatic retry",
+  "mensaje": "Imagen subida correctamente. Error al guardar los datos. Guardados para reintento automático",
+  "pendienteId": 8,
+  "path": "/api/tickets",
+  "timestamp": "2026-04-13T..."
 }
 ```
 
@@ -650,16 +668,304 @@ curl -X POST http://localhost:3000/api/tickets/pendientes/reintentar-todos \
 
 ### Shape de error uniforme
 
-Todos los errores siguen el mismo formato:
+Todos los errores siguen exactamente el mismo formato. El campo `codigo` es clave — úsalo en el cliente para manejar cada caso específico sin depender del `statusCode` ni parsear el texto del `mensaje`.
 
 ```json
 {
   "statusCode": 400,
-  "message": "Descripción del error",
+  "codigo": "FAC_003",
+  "sistema": "One or more product SKUs are not valid for this campaign",
+  "mensaje": "Uno o más productos no son válidos para esta campaña",
+  "skusInvalidos": ["2kg"],
+  "skusValidos": ["250g", "500g", "1kg", "5kg"],
   "path": "/api/tickets",
   "timestamp": "2026-04-13T12:00:00.000Z"
 }
 ```
+
+Para los errores de validación del DTO, el campo `errores` lista los problemas campo por campo:
+
+```json
+{
+  "statusCode": 400,
+  "codigo": "VAL_001",
+  "sistema": "Request body failed DTO validation (class-validator rules)",
+  "mensaje": "Los datos enviados no son válidos. Verifique el formato de cada campo",
+  "errores": [
+    "cedula must match /^\\d{6,10}$/",
+    "productos should not be empty"
+  ],
+  "path": "/api/tickets",
+  "timestamp": "2026-04-13T12:00:00.000Z"
+}
+```
+
+Ver tabla completa de códigos de error en el [README — Manejo de errores](../README.md#manejo-de-errores--referencia-para-integradores).
+
+---
+
+## 11. Testing de tickets pendientes con flags de entorno
+
+Para probar el flujo completo de `tickets_pendientes` sin necesitar que Cloudinary o la BD fallen de verdad, se pueden activar dos flags en el `.env` (solo funcionan con `NODE_ENV=development`).
+
+### Flags disponibles
+
+| Variable | Etapa que fuerza | Código de error | Campo guardado en pendiente |
+|----------|-----------------|-----------------|----------------------------|
+| `FORCE_CLOUDINARY_ERROR=true` | `upload_imagen` | `FAC_007` | `fotoBufferB64` (la imagen, para reintentar upload) |
+| `FORCE_DB_WRITE_ERROR=true` | `escritura_db` | `FAC_008` | `fotoUrl` (la URL de Cloudinary ya subida) |
+
+> **Nunca usar ambos al mismo tiempo.** Activa uno, prueba el flujo, luego cambia al otro.
+
+---
+
+### Escenario A — probar fallo de upload (`FORCE_CLOUDINARY_ERROR=true`)
+
+**Qué simula:** Cloudinary está caído. La imagen no llega al storage. Los datos del ticket se guardan en `tickets_pendientes` con el base64 de la imagen para poder reintentarlo después.
+
+#### Paso 1 — Activar el flag en `.env`
+
+```env
+FORCE_CLOUDINARY_ERROR=true
+FORCE_DB_WRITE_ERROR=false
+CLOUDINARY_MOCK=false   # asegurarse de que no esté en mock para que el flag aplique
+```
+
+Reiniciar el servidor: `npm run start:dev`
+
+#### Paso 2 — Registrar un ticket (va a fallar con 503)
+
+```bash
+curl -X POST http://localhost:3000/api/tickets \
+  -H "x-api-key: mi_clave_secreta" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cedula": "4345493",
+    "nombre": "María López",
+    "eventoId": 1,
+    "numeroTicket": "TEST-UPLOAD-001",
+    "local": "Tienda Test",
+    "fotoBase64": "data:image/jpeg;base64,/9j/4AAQ...",
+    "productos": [{ "sku": "1kg", "cantidad": 1 }]
+  }'
+```
+
+**Respuesta esperada (503):**
+```json
+{
+  "statusCode": 503,
+  "codigo": "FAC_007",
+  "mensaje": "Error al procesar la imagen. Sus datos fueron guardados para reintento automático",
+  "pendienteId": 1
+}
+```
+
+#### Paso 3 — Verificar que se creó el pendiente
+
+```bash
+curl "http://localhost:3000/api/tickets/pendientes?estado=pendiente" \
+  -H "x-api-key: mi_clave_secreta"
+```
+
+**Respuesta:**
+```json
+{
+  "data": [{
+    "id": 1,
+    "cedula": "4345493",
+    "eventoId": 1,
+    "numeroTicket": "TEST-UPLOAD-001",
+    "estado": "pendiente",
+    "etapaError": "upload_imagen",
+    "mensajeError": "[TEST] Forced Cloudinary upload failure (FORCE_CLOUDINARY_ERROR=true)",
+    "intentos": 0,
+    "tieneImagen": true,
+    "fechaRegistro": "2026-04-13T..."
+  }],
+  "total": 1
+}
+```
+
+#### Paso 4 — Desactivar el flag y reintentar
+
+```env
+FORCE_CLOUDINARY_ERROR=false
+```
+
+Reiniciar: `npm run start:dev`
+
+```bash
+curl -X POST http://localhost:3000/api/tickets/pendientes/1/reintentar \
+  -H "x-api-key: mi_clave_secreta"
+```
+
+**Respuesta exitosa:**
+```json
+{
+  "pendienteId": 1,
+  "exitoso": true,
+  "mensaje": "Reintento exitoso. Ticket registrado correctamente.",
+  "registro": {
+    "mensaje": "Participante registrado y cupones asignados correctamente",
+    "esUsuarioNuevo": true,
+    "eventoId": 1,
+    "numeroTicket": "TEST-UPLOAD-001",
+    "cuponesGenerados": 5,
+    "cuponesAcumulados": 5
+  }
+}
+```
+
+#### Paso 5 — Verificar que el pendiente quedó como completado
+
+```bash
+curl "http://localhost:3000/api/tickets/pendientes?estado=completado" \
+  -H "x-api-key: mi_clave_secreta"
+```
+
+---
+
+### Escenario B — probar fallo de escritura en BD (`FORCE_DB_WRITE_ERROR=true`)
+
+**Qué simula:** La imagen llegó a Cloudinary correctamente, pero la BD falló al guardar el ticket. Se almacena la URL de Cloudinary en el pendiente para no tener que subir la imagen de nuevo.
+
+#### Paso 1 — Activar el flag
+
+```env
+FORCE_DB_WRITE_ERROR=true
+FORCE_CLOUDINARY_ERROR=false
+```
+
+Reiniciar: `npm run start:dev`
+
+#### Paso 2 — Registrar un ticket (falla en escritura_db)
+
+```bash
+curl -X POST http://localhost:3000/api/tickets \
+  -H "x-api-key: mi_clave_secreta" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cedula": "4345493",
+    "eventoId": 1,
+    "numeroTicket": "TEST-DB-001",
+    "local": "Tienda Test",
+    "fotoBase64": "data:image/jpeg;base64,/9j/4AAQ...",
+    "productos": [{ "sku": "500g", "cantidad": 3 }]
+  }'
+```
+
+**Respuesta esperada (503):**
+```json
+{
+  "statusCode": 503,
+  "codigo": "FAC_008",
+  "mensaje": "Imagen subida correctamente. Error al guardar los datos. Guardados para reintento automático",
+  "pendienteId": 2
+}
+```
+
+#### Paso 3 — Verificar el pendiente
+
+```bash
+curl "http://localhost:3000/api/tickets/pendientes/2" \
+  -H "x-api-key: mi_clave_secreta"
+```
+
+Verificar que `etapaError = 'escritura_db'` y que `tieneImagen = true` (fotoUrl guardada).
+
+#### Paso 4 — Desactivar y reintentar
+
+```env
+FORCE_DB_WRITE_ERROR=false
+```
+
+```bash
+curl -X POST http://localhost:3000/api/tickets/pendientes/2/reintentar \
+  -H "x-api-key: mi_clave_secreta"
+```
+
+En el reintento, la imagen **no se vuelve a subir** — el sistema usa la `fotoUrl` ya almacenada.
+
+---
+
+### Escenario C — fallo permanente (agotar reintentos)
+
+Para simular un ticket que supera el límite de intentos:
+
+#### Paso 1 — Crear un pendiente
+
+Activa `FORCE_CLOUDINARY_ERROR=true` y registra un ticket. Apunta el `pendienteId`.
+
+#### Paso 2 — Reintentar con el flag activo (no lo desactives)
+
+Llama al endpoint de reintento 5 veces seguidas con el flag activo. Cada intento falla y suma `+1` a `intentos`.
+
+```bash
+for i in 1 2 3 4 5; do
+  curl -X POST http://localhost:3000/api/tickets/pendientes/{id}/reintentar \
+    -H "x-api-key: mi_clave_secreta"
+  echo "--- intento $i ---"
+done
+```
+
+Después del 5to intento, el estado cambia a `fallido_permanente`:
+
+```json
+{
+  "pendienteId": 3,
+  "exitoso": false,
+  "mensaje": "Máximo de intentos alcanzado (5). Requiere intervención manual."
+}
+```
+
+#### Paso 3 — Verificar estado final
+
+```bash
+curl "http://localhost:3000/api/tickets/pendientes?estado=fallido_permanente" \
+  -H "x-api-key: mi_clave_secreta"
+```
+
+---
+
+### Escenario D — reintento masivo
+
+Útil para probar `POST /api/tickets/pendientes/reintentar-todos` con múltiples pendientes.
+
+```bash
+# 1. Activar flag y registrar varios tickets con distintos numeroTicket
+FORCE_CLOUDINARY_ERROR=true  →  registrar TEST-LOTE-001, TEST-LOTE-002, TEST-LOTE-003
+
+# 2. Desactivar flag
+FORCE_CLOUDINARY_ERROR=false  →  reiniciar servidor
+
+# 3. Reintentar todos
+curl -X POST http://localhost:3000/api/tickets/pendientes/reintentar-todos \
+  -H "x-api-key: mi_clave_secreta"
+```
+
+**Respuesta:**
+```json
+{
+  "procesados": 3,
+  "exitosos": 3,
+  "fallidos": 0,
+  "resultados": [
+    { "pendienteId": 1, "exitoso": true, "mensaje": "Reintento exitoso. Ticket registrado correctamente." },
+    { "pendienteId": 2, "exitoso": true, "mensaje": "Reintento exitoso. Ticket registrado correctamente." },
+    { "pendienteId": 3, "exitoso": true, "mensaje": "Reintento exitoso. Ticket registrado correctamente." }
+  ]
+}
+```
+
+---
+
+### Notas importantes
+
+- Los flags **son ignorados automáticamente** si `NODE_ENV=production` — no hay riesgo en deploy.
+- Los logs del servidor indican claramente cuándo un flag está activo: `FORCE_CLOUDINARY_ERROR activo — simulando fallo de upload`.
+- El campo `mensajeError` en el pendiente incluye el texto `[TEST]` para distinguir errores forzados de errores reales.
+- Si un participante ya existía en la BD al momento del fallo, el reintento lo reutiliza — no crea duplicados.
+- Si el ticket `numeroTicket` ya fue registrado exitosamente (por otro intento), el reintento falla con `FAC_001` y el pendiente queda en `fallido_permanente`.
 
 ---
 

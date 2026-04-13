@@ -2,11 +2,11 @@ import {
   Injectable,
   CanActivate,
   ExecutionContext,
-  HttpException,
-  HttpStatus,
   Logger,
 } from '@nestjs/common';
 import { Request } from 'express';
+import { ERROR_CODES } from '../constants/error.constants';
+import { AppException } from '../exceptions/app.exception';
 
 interface RateLimitStore {
   count: number;
@@ -41,14 +41,9 @@ export class RateLimitGuard implements CanActivate {
 
     if (entry.count > this.max) {
       this.logger.warn(`[RATE_LIMIT] Límite excedido para IP: ${key}`);
-      throw new HttpException(
-        {
-          statusCode: HttpStatus.TOO_MANY_REQUESTS,
-          message: 'Demasiadas solicitudes. Intente más tarde.',
-          retryAfter: Math.ceil((entry.resetAt - now) / 1000),
-        },
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
+      throw AppException.tooManyRequests(ERROR_CODES.RATE_LIMIT_EXCEEDED, {
+        retryAfter: Math.ceil((entry.resetAt - now) / 1000),
+      });
     }
 
     return true;

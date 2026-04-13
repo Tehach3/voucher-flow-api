@@ -1,10 +1,5 @@
 import {
   Injectable,
-  ConflictException,
-  NotFoundException,
-  BadRequestException,
-  HttpException,
-  HttpStatus,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -40,6 +35,9 @@ import {
   ResultadoLoteReintento,
 } from '../../common/interfaces/factura.interface';
 import { securityConfig } from '../../config/security.config';
+import { testingConfig } from '../../config/testing.config';
+import { ERROR_CODES } from '../../common/constants/error.constants';
+import { AppException } from '../../common/exceptions/app.exception';
 
 // Estado intermedio que comparten registrarParticipacion y reintentarTicketPendiente
 interface ContextoRegistro {
@@ -90,7 +88,7 @@ export class FacturasService {
           ipAddress,
           datosNuevos: { cedulaHash: AuditoriaService.hashCedula(cedula), eventoId },
         });
-        throw new ConflictException('Esta imagen ya fue utilizada en esta campaña');
+        throw AppException.conflict(ERROR_CODES.IMAGE_DUPLICATE);
       }
     }
 
@@ -119,15 +117,9 @@ export class FacturasService {
         ipAddress,
         datosNuevos: { cedulaHash: AuditoriaService.hashCedula(cedula), eventoId, etapa: 'upload_imagen', error: mensaje },
       });
-      throw new HttpException(
-        {
-          statusCode: HttpStatus.SERVICE_UNAVAILABLE,
-          codigo: 'UPLOAD_FALLIDO',
-          mensaje: 'Error al procesar la imagen. Sus datos fueron guardados para reintento.',
-          pendienteId: pendiente.id,
-        },
-        HttpStatus.SERVICE_UNAVAILABLE,
-      );
+      throw AppException.serviceUnavailable(ERROR_CODES.UPLOAD_FALLIDO, {
+        pendienteId: pendiente.id,
+      });
     }
 
     // Fase 8: persistir en DB
@@ -158,15 +150,9 @@ export class FacturasService {
         ipAddress,
         datosNuevos: { cedulaHash: AuditoriaService.hashCedula(cedula), eventoId, etapa: 'escritura_db', error: mensaje },
       });
-      throw new HttpException(
-        {
-          statusCode: HttpStatus.SERVICE_UNAVAILABLE,
-          codigo: 'PERSISTENCIA_FALLIDA',
-          mensaje: 'Imagen subida correctamente. Error al guardar los datos. Guardados para reintento.',
-          pendienteId: pendiente.id,
-        },
-        HttpStatus.SERVICE_UNAVAILABLE,
-      );
+      throw AppException.serviceUnavailable(ERROR_CODES.PERSISTENCIA_FALLIDA, {
+        pendienteId: pendiente.id,
+      });
     }
   }
 
@@ -176,15 +162,15 @@ export class FacturasService {
     const pendiente = await this.pendientesRepository.findOne({ where: { id: pendienteId } });
 
     if (!pendiente) {
-      throw new NotFoundException(`Ticket pendiente con id ${pendienteId} no encontrado`);
+      throw AppException.notFound(ERROR_CODES.PENDING_NOT_FOUND, { pendienteId });
     }
 
     if (pendiente.estado === 'completado') {
-      throw new BadRequestException('Este ticket pendiente ya fue procesado exitosamente');
+      throw AppException.badRequest(ERROR_CODES.PENDING_ALREADY_PROCESSED, { pendienteId });
     }
 
     if (pendiente.estado === 'procesando') {
-      throw new BadRequestException('Este ticket pendiente ya está siendo procesado');
+      throw AppException.badRequest(ERROR_CODES.PENDING_PROCESSING, { pendienteId });
     }
 
     return this.procesarReintento(pendiente);
@@ -332,7 +318,7 @@ export class FacturasService {
     });
 
     if (!factura) {
-      throw new NotFoundException(`Factura con id ${id} no encontrada`);
+      throw AppException.notFound(ERROR_CODES.FACTURA_NOT_FOUND, { id });
     }
 
     return factura as IFactura;
@@ -403,29 +389,30 @@ export class FacturasService {
     const eventoEntity = await this.eventosService.findById(eventoId);
 
     if (!eventoEntity.activo) {
-      throw new BadRequestException(`La campaña ${eventoId} no está activa`);
+      throw AppException.badRequest(ERROR_CODES.EVENTO_INACTIVE, { eventoId });
     }
 
     const estadoEvento = this.eventosService.calcularEstado(eventoEntity as any);
 
     if (estadoEvento === 'cerrado') {
-      throw new BadRequestException(`La campaña ${eventoId} está cerrada`);
+      throw AppException.badRequest(ERROR_CODES.EVENTO_CLOSED, { eventoId });
     }
 
     if (estadoEvento === 'no_iniciado') {
-      throw new BadRequestException(
-        `La campaña aún no ha iniciado. Inicio: ${eventoEntity.fechaInicio.toISOString()}`,
-      );
+      throw AppException.badRequest(ERROR_CODES.EVENTO_NOT_STARTED, {
+        eventoId,
+        inicio: eventoEntity.fechaInicio.toISOString(),
+      });
     }
 
     if (estadoEvento === 'vencido') {
-      throw new BadRequestException(
-        `La campaña ha finalizado. Cierre: ${eventoEntity.fechaCierre.toISOString()}`,
-      );
+      throw AppException.badRequest(ERROR_CODES.EVENTO_EXPIRED, {
+        eventoId,
+        cierre: eventoEntity.fechaCierre.toISOString(),
+      });
     }
 
     const evento = eventoEntity;
-
     const condiciones = (evento as any).condicionesCupones as CondicionCupon[] | null;
 
     if (condiciones && condiciones.length > 0) {
@@ -433,21 +420,20 @@ export class FacturasService {
       const skusInvalidos = productos.map((p) => p.sku).filter((sku) => !skusValidos.includes(sku));
 
       if (skusInvalidos.length > 0) {
-        throw new BadRequestException(
-          `SKUs no válidos para esta campaña: ${skusInvalidos.join(', ')}. Válidos: ${skusValidos.join(', ')}`,
-        );
+        throw AppException.badRequest(ERROR_CODES.INVALID_SKU, {
+          skusInvalidos,
+          skusValidos,
+        });
       }
     }
 
-    // Verificar que el número de ticket no haya sido usado ya en esta campaña por ningún participante
+    // Verificar que el número de ticket no haya sido usado ya en esta campaña
     const ticketEnCampaña = await this.facturasRepository.findOne({
       where: { eventoId, numeroTicket },
     });
 
     if (ticketEnCampaña) {
-      throw new ConflictException(
-        `El número de factura ingresado ya generó cupones en esta campaña`,
-      );
+      throw AppException.conflict(ERROR_CODES.FACTURA_ALREADY_EXISTS);
     }
 
     const { participante, esNuevo } = await this.participantesService.findOrCreate({
@@ -455,7 +441,7 @@ export class FacturasService {
     });
 
     if (esNuevo && !nombre) {
-      throw new BadRequestException('nombre es requerido para registrar un nuevo participante');
+      throw AppException.badRequest(ERROR_CODES.NOMBRE_REQUIRED);
     }
 
     await this.dataSource.query('SELECT crear_participacion_evento($1, $2)', [participante.id, eventoId]);
@@ -465,7 +451,7 @@ export class FacturasService {
     });
 
     if (!participacion) {
-      throw new BadRequestException('No se pudo registrar la participación en la campaña');
+      throw AppException.badRequest(ERROR_CODES.PARTICIPACION_FAILED, { eventoId });
     }
 
     return { evento, participante, esNuevo, participacion };
@@ -481,6 +467,11 @@ export class FacturasService {
     fotoUrl: string,
     fotoHash: string | null = null,
   ): Promise<IRegistroParticipacionResponse> {
+    if (testingConfig.forceDbWriteError) {
+      this.logger.warn('[TICKETS] FORCE_DB_WRITE_ERROR activo — simulando fallo de escritura en DB');
+      throw new Error('[TEST] Forced DB write failure (FORCE_DB_WRITE_ERROR=true)');
+    }
+
     const { evento, participante, esNuevo, participacion } = contexto;
     const { cedula, eventoId, numeroTicket, local, multiplicador, coeficienteMultiplicador, productos } = dto;
     const condiciones = (evento as any).condicionesCupones as CondicionCupon[] | null;
@@ -558,7 +549,6 @@ export class FacturasService {
    * guarda en DB y actualiza el estado del pendiente.
    */
   private async procesarReintento(pendiente: TicketPendienteEntity): Promise<ResultadoReintento> {
-    // Marcar como procesando para evitar reintento simultáneo
     pendiente.estado = 'procesando';
     pendiente.intentos += 1;
     pendiente.fechaUltimoIntento = new Date();
@@ -570,14 +560,11 @@ export class FacturasService {
     );
 
     try {
-      // Re-validar reglas de negocio (puede haber cambiado el estado del evento, etc.)
       const contexto = await this.validarYPreparar(dto);
 
-      // Determinar URL de la foto para el reintento
       let fotoUrl = pendiente.fotoUrl;
 
       if (!fotoUrl) {
-        // La imagen nunca llegó a Cloudinary — reintentar upload con el base64 guardado
         if (!pendiente.fotoBufferB64) {
           throw new Error('No hay imagen disponible para el reintento (ni URL ni base64)');
         }
@@ -589,17 +576,14 @@ export class FacturasService {
         const { url } = await this.cloudinaryService.uploadBase64(dataUri, dto.eventoId, dto.numeroTicket);
         fotoUrl = url;
 
-        // Actualizar pendiente: ya tenemos URL, limpiar el buffer
         pendiente.fotoUrl = fotoUrl;
         pendiente.fotoBufferB64 = null;
         pendiente.etapaError = 'escritura_db';
         await this.pendientesRepository.save(pendiente);
       }
 
-      // Intentar persistir en DB
       const registro = await this.ejecutarTransaccionDB(contexto, dto, fotoUrl);
 
-      // Éxito: marcar como completado
       pendiente.estado = 'completado';
       pendiente.mensajeError = null;
       await this.pendientesRepository.save(pendiente);
@@ -612,8 +596,6 @@ export class FacturasService {
       };
     } catch (error) {
       const mensajeError = error instanceof Error ? error.message : String(error);
-
-      // Determinar nuevo estado según cantidad de intentos
       const nuevoEstado = pendiente.intentos >= MAX_INTENTOS ? 'fallido_permanente' : 'pendiente';
 
       pendiente.estado = nuevoEstado;
@@ -641,8 +623,6 @@ export class FacturasService {
     mensajeError: string,
     imagen: { fotoBase64?: string; fotoMimetype?: string; fotoUrl?: string } = {},
   ): Promise<TicketPendienteEntity> {
-    // El base64 completo puede tener el prefijo data:... o solo los datos crudos.
-    // Guardamos solo los datos crudos en foto_buffer_b64 para ahorrar espacio.
     const base64Puro = imagen.fotoBase64
       ? imagen.fotoBase64.replace(/^data:[^,]+,/, '')
       : null;
@@ -677,7 +657,6 @@ export class FacturasService {
       );
       return saved;
     } catch (saveError) {
-      // Si ni siquiera podemos guardar el pendiente, solo logueamos
       const msg = saveError instanceof Error ? saveError.message : String(saveError);
       this.logger.error(`[PENDIENTES] Error crítico al guardar pendiente: ${msg}`);
       throw saveError;

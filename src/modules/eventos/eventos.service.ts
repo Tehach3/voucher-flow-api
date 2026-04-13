@@ -1,7 +1,5 @@
 import {
   Injectable,
-  NotFoundException,
-  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -18,6 +16,8 @@ import {
   EventosPaginados,
 } from '../../common/interfaces/evento.interface';
 import { EstadoEvento } from './entities/evento.entity';
+import { ERROR_CODES } from '../../common/constants/error.constants';
+import { AppException } from '../../common/exceptions/app.exception';
 
 @Injectable()
 export class EventosService {
@@ -45,7 +45,6 @@ export class EventosService {
   }
 
   async findAbiertos(filtros: FiltrarEventosDto): Promise<IEventoPublico[]> {
-    // Traemos todos los eventos activos y calculamos el estado dinámicamente
     const eventos = await this.eventosRepository.find({
       where: { activo: true },
       order: { fechaCierre: 'ASC' },
@@ -62,7 +61,7 @@ export class EventosService {
     const evento = await this.eventosRepository.findOne({ where: { id } });
 
     if (!evento) {
-      throw new NotFoundException(`Evento con id ${id} no encontrado`);
+      throw AppException.notFound(ERROR_CODES.EVENTO_NOT_FOUND, { id });
     }
 
     return evento;
@@ -106,13 +105,11 @@ export class EventosService {
     const evento = await this.eventosRepository.findOne({ where: { id } });
 
     if (!evento) {
-      throw new NotFoundException(`Evento con id ${id} no encontrado`);
+      throw AppException.notFound(ERROR_CODES.EVENTO_NOT_FOUND, { id });
     }
 
     if (evento.estadoInterno === 'cerrado') {
-      throw new BadRequestException(
-        `No se puede modificar un evento cerrado`,
-      );
+      throw AppException.badRequest(ERROR_CODES.EVENTO_UPDATE_CLOSED, { id });
     }
 
     const tieneCondiciones =
@@ -122,7 +119,6 @@ export class EventosService {
       this.validarCondicionesCupones(tieneCondiciones, dto.condicionesCupones);
     }
 
-    // Validar fechas si se actualizan
     const nuevaFechaInicio = dto.fechaInicio ? new Date(dto.fechaInicio) : evento.fechaInicio;
     const nuevaFechaCierre = dto.fechaCierre ? new Date(dto.fechaCierre) : evento.fechaCierre;
 
@@ -149,11 +145,11 @@ export class EventosService {
     const evento = await this.eventosRepository.findOne({ where: { id } });
 
     if (!evento) {
-      throw new NotFoundException(`Evento con id ${id} no encontrado`);
+      throw AppException.notFound(ERROR_CODES.EVENTO_NOT_FOUND, { id });
     }
 
     if (evento.estadoInterno === 'cerrado') {
-      throw new BadRequestException(`El evento ${id} ya está cerrado`);
+      throw AppException.badRequest(ERROR_CODES.EVENTO_ALREADY_CLOSED, { id });
     }
 
     await this.dataSource.query('SELECT cerrar_evento($1)', [id]);
@@ -179,15 +175,15 @@ export class EventosService {
     const fechaCierre = new Date(fechaCierreStr);
 
     if (fechaCierre <= now) {
-      throw new BadRequestException(
-        'fechaCierre debe ser una fecha futura — no se pueden crear eventos que ya hayan vencido',
-      );
+      throw AppException.badRequest(ERROR_CODES.EVENTO_INVALID_DATE, {
+        detalle: 'fechaCierre debe ser una fecha futura',
+      });
     }
 
     if (fechaInicio >= fechaCierre) {
-      throw new BadRequestException(
-        'fechaInicio debe ser anterior a fechaCierre',
-      );
+      throw AppException.badRequest(ERROR_CODES.EVENTO_INVALID_DATE, {
+        detalle: 'fechaInicio debe ser anterior a fechaCierre',
+      });
     }
   }
 
@@ -195,15 +191,15 @@ export class EventosService {
     const now = new Date();
 
     if (fechaCierre <= now) {
-      throw new BadRequestException(
-        'fechaCierre debe ser una fecha futura — no se puede establecer una fecha de cierre ya vencida',
-      );
+      throw AppException.badRequest(ERROR_CODES.EVENTO_INVALID_DATE, {
+        detalle: 'fechaCierre debe ser una fecha futura',
+      });
     }
 
     if (fechaInicio >= fechaCierre) {
-      throw new BadRequestException(
-        'fechaInicio debe ser anterior a fechaCierre',
-      );
+      throw AppException.badRequest(ERROR_CODES.EVENTO_INVALID_DATE, {
+        detalle: 'fechaInicio debe ser anterior a fechaCierre',
+      });
     }
   }
 
@@ -213,15 +209,15 @@ export class EventosService {
   ): void {
     if (tieneCondicionesMultiples) {
       if (!condicionesCupones || condicionesCupones.length < 2) {
-        throw new BadRequestException(
-          'condicionesCupones debe tener al menos 2 elementos cuando tieneCondicionesMultiples=true',
-        );
+        throw AppException.badRequest(ERROR_CODES.EVENTO_INVALID_CONDITIONS, {
+          detalle: 'condicionesCupones debe tener al menos 2 elementos cuando tieneCondicionesMultiples=true',
+        });
       }
     } else {
       if (condicionesCupones && condicionesCupones.length > 1) {
-        throw new BadRequestException(
-          'condicionesCupones debe tener exactamente 1 elemento cuando tieneCondicionesMultiples=false',
-        );
+        throw AppException.badRequest(ERROR_CODES.EVENTO_INVALID_CONDITIONS, {
+          detalle: 'condicionesCupones debe tener exactamente 1 elemento cuando tieneCondicionesMultiples=false',
+        });
       }
     }
   }

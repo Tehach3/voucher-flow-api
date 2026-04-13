@@ -2,12 +2,13 @@ import {
   Injectable,
   CanActivate,
   ExecutionContext,
-  UnauthorizedException,
   Logger,
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { Request } from 'express';
 import { securityConfig } from '../../config/security.config';
+import { ERROR_CODES } from '../constants/error.constants';
+import { AppException } from '../exceptions/app.exception';
 
 /**
  * Guard HMAC — verifica que cada request esté firmado por la app cliente.
@@ -32,21 +33,21 @@ export class HmacGuard implements CanActivate {
     const timestamp  = req.headers['x-timestamp']  as string | undefined;
 
     if (!signature || !timestamp) {
-      throw new UnauthorizedException('Firma de request ausente (X-Signature / X-Timestamp)');
+      throw AppException.unauthorized(ERROR_CODES.HMAC_MISSING);
     }
 
     const ts  = parseInt(timestamp, 10);
     const now = Math.floor(Date.now() / 1000);
 
     if (isNaN(ts) || Math.abs(now - ts) > hmac.windowSecs) {
-      throw new UnauthorizedException(
-        `Timestamp expirado o fuera del rango permitido (±${hmac.windowSecs}s)`,
-      );
+      throw AppException.unauthorized(ERROR_CODES.HMAC_EXPIRED, {
+        windowSecs: hmac.windowSecs,
+      });
     }
 
     if (!hmac.secret) {
       this.logger.error('[HMAC] APP_HMAC_SECRET no está configurado');
-      throw new UnauthorizedException('Configuración de firma incompleta en el servidor');
+      throw AppException.unauthorized(ERROR_CODES.HMAC_CONFIG);
     }
 
     const rawBody  = req.rawBody ?? '';
@@ -68,7 +69,7 @@ export class HmacGuard implements CanActivate {
 
     if (!isValid) {
       this.logger.warn(`[HMAC] Firma inválida — IP: ${req.ip}`);
-      throw new UnauthorizedException('Firma inválida');
+      throw AppException.unauthorized(ERROR_CODES.HMAC_INVALID);
     }
 
     return true;

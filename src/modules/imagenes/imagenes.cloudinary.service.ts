@@ -1,10 +1,11 @@
 import {
   Injectable,
-  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { CloudinaryService } from '../../services/cloudinary.service';
 import { OcrData } from '../facturas/entities/factura.entity';
+import { ERROR_CODES } from '../../common/constants/error.constants';
+import { AppException } from '../../common/exceptions/app.exception';
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/jpg', 'image/png'];
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -33,15 +34,16 @@ export class ImagenesCloudinaryService {
 
   private validateFile(file: Express.Multer.File): void {
     if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
-      throw new BadRequestException(
-        `Tipo de archivo no permitido: ${file.mimetype}. Use JPG o PNG.`,
-      );
+      throw AppException.badRequest(ERROR_CODES.INVALID_FILE_TYPE, {
+        tipoRecibido: file.mimetype,
+      });
     }
 
     if (file.size > MAX_FILE_SIZE_BYTES) {
-      throw new BadRequestException(
-        `La imagen supera el tamaño máximo permitido de 5 MB`,
-      );
+      throw AppException.badRequest(ERROR_CODES.FILE_TOO_LARGE, {
+        tamanoRecibidoKb: Math.round(file.size / 1024),
+        limiteKb: 5120,
+      });
     }
   }
 }

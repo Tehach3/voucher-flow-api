@@ -2,11 +2,11 @@ import {
   Injectable,
   CanActivate,
   ExecutionContext,
-  UnauthorizedException,
   Logger,
 } from '@nestjs/common';
 import { Request } from 'express';
 import { ERROR_CODES } from '../constants/error.constants';
+import { AppException } from '../exceptions/app.exception';
 
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
@@ -17,23 +17,15 @@ export class ApiKeyGuard implements CanActivate {
     const apiKeyHeader = request.headers['x-api-key'];
 
     if (!apiKeyHeader) {
-      throw new UnauthorizedException({
-        code: ERROR_CODES.MISSING_AUTH_HEADER,
-        message: 'Header x-api-key requerido',
-      });
+      throw AppException.unauthorized(ERROR_CODES.MISSING_API_KEY);
     }
 
     const token = Array.isArray(apiKeyHeader) ? apiKeyHeader[0] : apiKeyHeader;
     const apiKey = process.env.API_KEY;
 
     if (!apiKey || token !== apiKey) {
-      this.logger.warn(
-        `[API_KEY_GUARD] Token inválido desde IP: ${request.ip}`,
-      );
-      throw new UnauthorizedException({
-        code: ERROR_CODES.INVALID_API_KEY,
-        message: 'API Key inválida',
-      });
+      this.logger.warn(`[API_KEY_GUARD] Token inválido desde IP: ${request.ip}`);
+      throw AppException.unauthorized(ERROR_CODES.INVALID_API_KEY);
     }
 
     return true;

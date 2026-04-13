@@ -1,7 +1,10 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { v2 as cloudinary } from 'cloudinary';
 import { OcrData } from '../modules/facturas/entities/factura.entity';
 import { cloudinaryConfig } from '../config/cloudinary.config';
+import { testingConfig } from '../config/testing.config';
+import { ERROR_CODES } from '../common/constants/error.constants';
+import { AppException } from '../common/exceptions/app.exception';
 
 @Injectable()
 export class CloudinaryService {
@@ -56,6 +59,11 @@ export class CloudinaryService {
     eventoIdOrCedula: number | string,
     numeroTicket?: string,
   ): Promise<{ url: string; publicId: string }> {
+    if (testingConfig.forceCloudinaryError) {
+      this.logger.warn('[CLOUDINARY] FORCE_CLOUDINARY_ERROR activo — simulando fallo de upload');
+      throw new Error('[TEST] Forced Cloudinary upload failure (FORCE_CLOUDINARY_ERROR=true)');
+    }
+
     if (this.isMock || !this.isConfigured) {
       return this.stubUploadDataUri(dataUri, eventoIdOrCedula, numeroTicket);
     }
@@ -93,7 +101,7 @@ export class CloudinaryService {
     } catch (error) {
       const message = this.extractErrorMessage(error);
       this.logger.error(`[CLOUDINARY] Error en upload: ${message}`);
-      throw new BadRequestException(`Error al procesar la imagen: ${message}`);
+      throw AppException.badRequest(ERROR_CODES.UPLOAD_FAILED, { detalle: message });
     }
   }
 
