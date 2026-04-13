@@ -102,7 +102,7 @@ export class FacturasService {
     const fotoMimetype = this.extraerMimetype(fotoBase64);
     let fotoUrl: string;
     try {
-      const { url } = await this.cloudinaryService.uploadBase64(fotoBase64, cedula);
+      const { url } = await this.cloudinaryService.uploadBase64(fotoBase64, eventoId, dto.numeroTicket);
       fotoUrl = url;
     } catch (uploadError) {
       const mensaje = uploadError instanceof Error ? uploadError.message : String(uploadError);
@@ -586,7 +586,7 @@ export class FacturasService {
           ? `data:${pendiente.fotoMimetype};base64,${pendiente.fotoBufferB64}`
           : pendiente.fotoBufferB64;
 
-        const { url } = await this.cloudinaryService.uploadBase64(dataUri, dto.cedula);
+        const { url } = await this.cloudinaryService.uploadBase64(dataUri, dto.eventoId, dto.numeroTicket);
         fotoUrl = url;
 
         // Actualizar pendiente: ya tenemos URL, limpiar el buffer

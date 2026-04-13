@@ -10,10 +10,11 @@ import { Request, Response } from 'express';
 
 interface ErrorResponse {
   statusCode: number;
-  code?: string;
-  message: string | string[];
+  codigo?: string;
+  message?: string | string[];
   path: string;
   timestamp: string;
+  [key: string]: unknown;
 }
 
 @Catch()
@@ -26,8 +27,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
 
     let status: number;
-    let message: string | string[];
-    let code: string | undefined;
+    let extraFields: Record<string, unknown> = {};
 
     if (exception instanceof HttpException) {
       status = exception.getStatus();
@@ -35,14 +35,23 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
       if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
         const resp = exceptionResponse as Record<string, unknown>;
-        message = (resp['message'] as string | string[]) ?? exception.message;
-        code = resp['code'] as string | undefined;
+        // Normaliza: acepta tanto 'message' (inglés) como 'mensaje' (español)
+        const rawMessage = resp['message'] ?? resp['mensaje'] ?? exception.message;
+        // Normaliza: acepta tanto 'code' como 'codigo'
+        const rawCode = resp['codigo'] ?? resp['code'];
+        // Copia todos los campos extra (pendienteId, etc.) excluyendo statusCode
+        const { statusCode: _s, message: _m, mensaje: _mj, code: _c, codigo: _co, ...rest } = resp;
+        extraFields = {
+          message: rawMessage as string | string[],
+          ...(rawCode ? { codigo: rawCode } : {}),
+          ...rest,
+        };
       } else {
-        message = exception.message;
+        extraFields = { message: exception.message };
       }
     } else {
       status = HttpStatus.INTERNAL_SERVER_ERROR;
-      message = 'Error interno del servidor';
+      extraFields = { message: 'Error interno del servidor' };
       this.logger.error(
         `[HTTP_EXCEPTION_FILTER] Error no controlado`,
         exception instanceof Error ? exception.stack : String(exception),
@@ -51,8 +60,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     const errorBody: ErrorResponse = {
       statusCode: status,
-      ...(code && { code }),
-      message,
+      ...extraFields,
       path: request.url,
       timestamp: new Date().toISOString(),
     };
@@ -64,7 +72,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       );
     } else if (status >= 400) {
       this.logger.warn(
-        `[${request.method}] ${request.url} → ${status}: ${JSON.stringify(message)}`,
+        `[${request.method}] ${request.url} → ${status}: ${JSON.stringify(errorBody.message)}`,
       );
     }
 

@@ -38,39 +38,62 @@ export class CloudinaryService {
 
   /**
    * Sube una imagen en formato Data URI base64 (data:image/jpeg;base64,...).
-   * Usado por el endpoint POST /api/tickets cuando el frontend envía la imagen en JSON.
+   * Usado por POST /api/tickets. La imagen se almacena en:
+   *   sorteos/evento-{eventoId}/{numeroTicket}
+   * Esto permite localizar cualquier comprobante directamente en Cloudinary
+   * buscando por número de ticket dentro de la carpeta de la campaña.
    */
   async uploadBase64(
     dataUri: string,
-    cedula: string,
+    eventoId: number,
+    numeroTicket: string,
   ): Promise<{ url: string; publicId: string }> {
-    return this.uploadDataUri(dataUri, cedula);
+    return this.uploadDataUri(dataUri, eventoId, numeroTicket);
   }
 
   private async uploadDataUri(
     dataUri: string,
-    cedula: string,
+    eventoIdOrCedula: number | string,
+    numeroTicket?: string,
   ): Promise<{ url: string; publicId: string }> {
     if (this.isMock || !this.isConfigured) {
-      return this.stubUploadDataUri(dataUri, cedula);
+      return this.stubUploadDataUri(dataUri, eventoIdOrCedula, numeroTicket);
+    }
+
+    // Sanitizar el número de ticket para usarlo como public_id en Cloudinary
+    const safeTicket = numeroTicket
+      ? String(numeroTicket).replace(/[^a-zA-Z0-9\-_]/g, '_')
+      : undefined;
+
+    const folder = safeTicket
+      ? `sorteos/evento-${eventoIdOrCedula}`
+      : `sorteos/participantes/${eventoIdOrCedula}`;
+
+    const uploadOptions: Record<string, unknown> = {
+      folder,
+      resource_type: 'image',
+      ocr: 'adv_ocr',
+    };
+
+    if (safeTicket) {
+      // public_id fijo: sorteos/evento-1/FAC-2026-00123
+      // Permite recuperar la imagen directamente por número de ticket
+      uploadOptions.public_id = safeTicket;
+      uploadOptions.overwrite = false;
     }
 
     try {
-      const result = await cloudinary.uploader.upload(dataUri, {
-        folder: `sorteos/facturas/${cedula}`,
-        resource_type: 'image',
-        ocr: 'adv_ocr',
-      });
+      const result = await cloudinary.uploader.upload(dataUri, uploadOptions);
 
       this.logger.log(
-        `[CLOUDINARY] Upload exitoso para cédula ${cedula}: ${result.public_id}`,
+        `[CLOUDINARY] Upload exitoso: ${result.public_id}`,
       );
 
       return { url: result.secure_url, publicId: result.public_id };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = this.extractErrorMessage(error);
       this.logger.error(`[CLOUDINARY] Error en upload: ${message}`);
-      throw new BadRequestException('Error al procesar la imagen');
+      throw new BadRequestException(`Error al procesar la imagen: ${message}`);
     }
   }
 
@@ -108,19 +131,39 @@ export class CloudinaryService {
     }
   }
 
+  private extractErrorMessage(error: unknown): string {
+    if (error instanceof Error) return error.message;
+    if (typeof error === 'object' && error !== null) {
+      const e = error as Record<string, unknown>;
+      // Cloudinary SDK errors have shape: { error: { message: string }, http_code: number }
+      if (typeof e['error'] === 'object' && e['error'] !== null) {
+        const inner = e['error'] as Record<string, unknown>;
+        if (typeof inner['message'] === 'string') return `HTTP ${e['http_code'] ?? ''}: ${inner['message']}`;
+      }
+      if (typeof e['message'] === 'string') return e['message'];
+      return JSON.stringify(error);
+    }
+    return String(error);
+  }
+
   private stubUploadDataUri(
     dataUri: string,
-    cedula: string,
+    eventoIdOrCedula: number | string,
+    numeroTicket?: string,
   ): { url: string; publicId: string } {
     const timestamp = Date.now();
     const mimeMatch = dataUri.match(/^data:image\/([a-z]+);base64,/);
     const ext = mimeMatch ? mimeMatch[1] : 'jpg';
-    const publicId = `sorteos/facturas/${cedula}/stub_${timestamp}`;
-    const url = `http://localhost:3000/stub-uploads/${cedula}/${timestamp}.${ext}`;
+    const safeTicket = numeroTicket
+      ? String(numeroTicket).replace(/[^a-zA-Z0-9\-_]/g, '_')
+      : `stub_${timestamp}`;
+
+    const publicId = `sorteos/evento-${eventoIdOrCedula}/${safeTicket}`;
+    const url = `http://localhost:3000/stub-uploads/evento-${eventoIdOrCedula}/${safeTicket}.${ext}`;
     const approxKb = Math.round((dataUri.length * 3) / 4 / 1024);
 
     this.logger.debug(
-      `[CLOUDINARY] Stub upload para cédula ${cedula} — tamaño aprox: ${approxKb} KB`,
+      `[CLOUDINARY] Stub upload — evento: ${eventoIdOrCedula}, ticket: ${numeroTicket} — tamaño aprox: ${approxKb} KB`,
     );
 
     return { url, publicId };

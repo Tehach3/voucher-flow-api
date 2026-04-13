@@ -10,7 +10,7 @@ export function getDatabaseConfig(): TypeOrmModuleOptions {
       entities: [__dirname + '/../**/*.entity{.ts,.js}'],
       migrations: [__dirname + '/../database/migrations/*{.ts,.js}'],
       synchronize: false,
-      logging: process.env.NODE_ENV === 'development',
+      logging: ['error', 'schema', 'migration', 'warn'],
       ssl: { rejectUnauthorized: false },
       retryAttempts: 3,
       retryDelay: 2000,
@@ -32,7 +32,7 @@ export function getDatabaseConfig(): TypeOrmModuleOptions {
     entities: [__dirname + '/../**/*.entity{.ts,.js}'],
     migrations: [__dirname + '/../database/migrations/*{.ts,.js}'],
     synchronize: false,
-    logging: process.env.NODE_ENV === 'development',
+    logging: ['error', 'schema', 'migration', 'warn'],
     ssl:
       process.env.DATABASE_SSL === 'true'
         ? { rejectUnauthorized: false }
