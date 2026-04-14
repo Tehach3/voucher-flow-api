@@ -86,7 +86,9 @@ async function bootstrap(): Promise<void> {
       if (err.type === 'entity.too.large') {
         res.status(413).json({
           statusCode: 413,
-          message: `El cuerpo de la solicitud supera el límite permitido de ${MAX_BODY_SIZE}. Las imágenes en base64 no deben superar los 7 MB.`,
+          codigo: 'IMG_002',
+          sistema: 'Request body exceeds the allowed limit',
+          mensaje: `El cuerpo de la solicitud supera el límite permitido de ${MAX_BODY_SIZE}. Las imágenes en base64 no deben superar los 7 MB.`,
           path: req.url,
           timestamp: new Date().toISOString(),
         });
@@ -95,16 +97,22 @@ async function bootstrap(): Promise<void> {
 
       res.status(err.status ?? 500).json({
         statusCode: err.status ?? 500,
-        message: err.message ?? 'Error interno del servidor',
+        codigo: 'SRV_001',
+        sistema: err.message ?? 'Internal server error',
+        mensaje: 'Error interno del servidor',
         path: req.url,
         timestamp: new Date().toISOString(),
       });
     },
   );
 
+  // Graceful shutdown — NestJS cierra conexiones limpias al recibir SIGTERM/SIGINT
+  app.enableShutdownHooks();
+
+  // Escuchar en 0.0.0.0 para ser accesible fuera del container (Railway, Docker)
   const port = parseInt(process.env.PORT ?? '3000', 10);
-  await app.listen(port);
-  logger.log(`Application running on http://localhost:${port}`);
+  await app.listen(port, '0.0.0.0');
+  logger.log(`Application running on http://0.0.0.0:${port}`);
   logger.log(`Swagger docs:    http://localhost:${port}/api/docs`);
   logger.log(`Health check:    http://localhost:${port}/api/health`);
   logger.log(`Prefix:          /api`);

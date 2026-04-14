@@ -10,6 +10,9 @@ export function getDatabaseConfig(): TypeOrmModuleOptions {
       entities: [__dirname + '/../**/*.entity{.ts,.js}'],
       migrations: [__dirname + '/../database/migrations/*{.ts,.js}'],
       synchronize: false,
+      // Ejecuta migraciones pendientes automáticamente al arrancar la app.
+      // TypeORM usa un lock interno — es seguro con múltiples réplicas.
+      migrationsRun: true,
       logging: ['error', 'schema', 'migration', 'warn'],
       ssl: { rejectUnauthorized: false },
       retryAttempts: 3,
@@ -32,6 +35,7 @@ export function getDatabaseConfig(): TypeOrmModuleOptions {
     entities: [__dirname + '/../**/*.entity{.ts,.js}'],
     migrations: [__dirname + '/../database/migrations/*{.ts,.js}'],
     synchronize: false,
+    migrationsRun: true,
     logging: ['error', 'schema', 'migration', 'warn'],
     ssl:
       process.env.DATABASE_SSL === 'true'
