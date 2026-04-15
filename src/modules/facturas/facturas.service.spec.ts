@@ -17,7 +17,6 @@ import { CloudinaryService } from '../../services/cloudinary.service';
 import { ParticipanteEntity } from '../participantes/entities/participante.entity';
 import { EventoEntity } from '../eventos/entities/evento.entity';
 import { RegistrarParticipacionDto } from '../../common/dtos/registrar-participacion.dto';
-import { FiltrarTicketsDto } from '../../common/dtos/filtrar-tickets.dto';
 import { FiltrarPendientesDto } from '../../common/dtos/filtrar-pendientes.dto';
 import { PaginationDto } from '../../common/dtos/pagination.dto';
 import { AuditoriaService } from '../auditoria/auditoria.service';
@@ -394,7 +393,7 @@ describe('FacturasService', () => {
       eventosService.findById.mockResolvedValue(makeEvento());
       participantesService.findOrCreate.mockResolvedValue({ participante: mockParticipanteFixture(), esNuevo: true });
       await expect(
-        service.registrarParticipacion({ ...baseDto, nombre: undefined }, '127.0.0.1'),
+        service.registrarParticipacion({ ...baseDto, nombre: undefined as unknown as string }, '127.0.0.1'),
       ).rejects.toThrow(HttpException);
       expect(cloudinaryService.uploadBase64).not.toHaveBeenCalled();
     });
@@ -605,7 +604,7 @@ describe('FacturasService', () => {
         .mockResolvedValueOnce({ url: 'https://cdn.example.com/1.jpg', publicId: 'x' }) // p1 no llama upload
         .mockRejectedValueOnce(new Error('Cloudinary down')); // p2 falla
 
-      const result = await service.reintentarTodosPendientes();
+      const result = await service.reintentarTodosPendientes(1);
 
       expect(result.procesados).toBe(2);
       expect(result.resultados).toHaveLength(2);
@@ -614,7 +613,7 @@ describe('FacturasService', () => {
     it('retorna procesados=0 cuando no hay pendientes', async () => {
       pendientesRepo.find.mockResolvedValue([]);
 
-      const result = await service.reintentarTodosPendientes();
+      const result = await service.reintentarTodosPendientes(1);
 
       expect(result.procesados).toBe(0);
       expect(result.exitosos).toBe(0);
@@ -650,7 +649,7 @@ describe('FacturasService', () => {
       qb.getCount.mockResolvedValue(0);
       qb.getMany.mockResolvedValue([]);
 
-      await service.getPendientes({ estado: 'fallido_permanente', page: 1, limit: 20 } as FiltrarPendientesDto);
+      await service.getPendientes({ estado: 'fallido_permanente', page: 1, limit: 20 } as unknown as FiltrarPendientesDto);
 
       expect(qb.andWhere).toHaveBeenCalledWith('p.estado = :estado', { estado: 'fallido_permanente' });
     });
@@ -728,44 +727,4 @@ describe('FacturasService', () => {
     });
   });
 
-  // ── findAllTickets ────────────────────────────────────────────────────────
-
-  describe('findAllTickets', () => {
-    let qb: ReturnType<typeof makeQb>;
-
-    beforeEach(() => {
-      qb = makeQb();
-      facturasRepo.createQueryBuilder.mockReturnValue(qb);
-    });
-
-    it('retorna listado paginado vacío', async () => {
-      const result = await service.findAllTickets({ page: 1, limit: 20 } as FiltrarTicketsDto);
-      expect(result.total).toBe(0);
-      expect(result.data).toHaveLength(0);
-    });
-
-    it('aplica filtro por número de ticket', async () => {
-      qb.getCount.mockResolvedValue(0);
-      qb.getRawMany.mockResolvedValue([]);
-      await service.findAllTickets({ numeroTicket: 'TKT-001', page: 1, limit: 20 } as FiltrarTicketsDto);
-      expect(qb.andWhere).toHaveBeenCalledWith(
-        'LOWER(f.numero_ticket) LIKE LOWER(:numeroTicket)',
-        { numeroTicket: '%TKT-001%' },
-      );
-    });
-
-    it('aplica filtro fechaHasta ajustado al final del día', async () => {
-      await service.findAllTickets({ fechaHasta: '2024-12-31', page: 1, limit: 20 } as FiltrarTicketsDto);
-      expect(qb.andWhere).toHaveBeenCalledWith(
-        'f.fecha_carga <= :fechaHasta',
-        { fechaHasta: '2024-12-31T23:59:59.999Z' },
-      );
-    });
-
-    it('aplica offset correcto según la página', async () => {
-      qb.getCount.mockResolvedValue(50);
-      await service.findAllTickets({ page: 3, limit: 10 } as FiltrarTicketsDto);
-      expect(qb.offset).toHaveBeenCalledWith(20);
-    });
-  });
 });

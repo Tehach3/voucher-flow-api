@@ -6,9 +6,9 @@ import { AppService } from './app.service';
 import { getDatabaseConfig } from './config/database.config';
 import { ParticipantesModule } from './modules/participantes/participantes.module';
 import { FacturasModule } from './modules/facturas/facturas.module';
-import { ImagenesModule } from './modules/imagenes/imagenes.module';
 import { EventosModule } from './modules/eventos/eventos.module';
 import { AuditoriaModule } from './modules/auditoria/auditoria.module';
+import { ReportesModule } from './modules/reportes/reportes.module';
 
 @Module({
   imports: [
@@ -22,8 +22,8 @@ import { AuditoriaModule } from './modules/auditoria/auditoria.module';
     ParticipantesModule,
     EventosModule,
     FacturasModule,
-    ImagenesModule,
     AuditoriaModule,
+    ReportesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

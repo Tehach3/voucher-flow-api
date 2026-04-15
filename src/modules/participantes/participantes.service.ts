@@ -1,13 +1,8 @@
-import {
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ParticipanteEntity } from './entities/participante.entity';
-import { ActualizarParticipanteDto } from '../../common/dtos/actualizar-participante.dto';
-import { PaginationDto } from '../../common/dtos/pagination.dto';
-import { IParticipante, IParticipantePublico } from '../../common/interfaces/participante.interface';
+import { IParticipante } from '../../common/interfaces/participante.interface';
 import { ERROR_CODES } from '../../common/constants/error.constants';
 import { AppException } from '../../common/exceptions/app.exception';
 
@@ -22,13 +17,6 @@ export interface FindOrCreateParams {
 export interface FindOrCreateResult {
   participante: ParticipanteEntity;
   esNuevo: boolean;
-}
-
-export interface ParticipantesPaginados {
-  data: IParticipantePublico[];
-  total: number;
-  page: number;
-  limit: number;
 }
 
 @Injectable()
@@ -64,60 +52,12 @@ export class ParticipantesService {
   }
 
   async findByCedula(cedula: string): Promise<IParticipante> {
-    const participante = await this.participantesRepository.findOne({
-      where: { cedula },
-    });
-
-    if (!participante) {
-      throw AppException.notFound(ERROR_CODES.USUARIO_NOT_FOUND);
-    }
-
-    return participante;
-  }
-
-  async findByCedulaPublico(cedula: string): Promise<IParticipantePublico> {
-    const participante = await this.findByCedula(cedula);
-    return this.toPublico(participante as ParticipanteEntity);
-  }
-
-  async findAll(pagination: PaginationDto): Promise<ParticipantesPaginados> {
-    const [data, total] = await this.participantesRepository.findAndCount({
-      order: { fechaRegistro: 'DESC' },
-      skip: pagination.offset,
-      take: pagination.limit,
-    });
-
-    return {
-      data: data.map(this.toPublico),
-      total,
-      page: pagination.page ?? 1,
-      limit: pagination.limit ?? 20,
-    };
-  }
-
-  async updateParticipante(
-    cedula: string,
-    dto: ActualizarParticipanteDto,
-  ): Promise<IParticipantePublico> {
     const participante = await this.participantesRepository.findOne({ where: { cedula } });
 
     if (!participante) {
       throw AppException.notFound(ERROR_CODES.USUARIO_NOT_FOUND);
     }
 
-    if (dto.nombre !== undefined) participante.nombre = dto.nombre;
-    if (dto.celular !== undefined) participante.celular = dto.celular;
-    if (dto.ciudad !== undefined) participante.ciudad = dto.ciudad;
-    if (dto.email !== undefined) participante.email = dto.email;
-
-    const updated = await this.participantesRepository.save(participante);
-    this.logger.log(`[PARTICIPANTES] Participante actualizado: ${cedula}`);
-    return this.toPublico(updated);
-  }
-
-  private toPublico(participante: ParticipanteEntity): IParticipantePublico {
-    return {
-      ciudad: participante.ciudad,
-    };
+    return participante;
   }
 }

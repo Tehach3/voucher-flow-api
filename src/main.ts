@@ -55,17 +55,32 @@ async function bootstrap(): Promise<void> {
   // Swagger
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Voucher Flow API')
-    .setDescription('API para la plataforma de sorteos y cupones promocionales')
+    .setDescription(
+      '## Plataforma de sorteos y cupones promocionales\n\n' +
+      'Esta API gestiona el ciclo completo de una campaña promocional: desde la creación del evento ' +
+      'hasta el registro de tickets de compra y la acumulación de cupones por participante.\n\n' +
+      '### Flujo principal\n' +
+      '1. **Crear un evento** (`POST /api/eventos`) — define la campaña, fechas, SKUs válidos y reglas de cupones.\n' +
+      '2. **Registrar participación** (`POST /api/tickets`) — incluye la imagen como Data URI base64 en el mismo JSON. ' +
+      'Valida el ticket, crea al participante si es nuevo, ' +
+      'calcula y acumula los cupones en la campaña.\n' +
+      '3. **Consultar cupones** (`GET /api/tickets/:cedula/cupones`) — permite al participante ver su historial.\n' +
+      '4. **Reportes** (`GET /api/reportes/eventos/:id/...`) — estadísticas y detalle de facturas para el backoffice.\n\n' +
+      '### Autenticación\n' +
+      'Todos los endpoints (excepto `GET /api/health`) requieren el header `x-api-key: <API_KEY>`.\n\n' +
+      '### Manejo de fallos\n' +
+      'Si Cloudinary o la base de datos fallan al registrar un ticket, los datos quedan en `tickets_pendientes`. ' +
+      'Usa los endpoints de reintento para reprocesarlos sin pérdida de información.',
+    )
     .setVersion('1.0')
     .addApiKey(
       { type: 'apiKey', in: 'header', name: 'x-api-key' },
       'x-api-key',
     )
-    .addTag('health', 'Estado del servicio')
-    .addTag('eventos', 'Gestión de eventos/sorteos')
-    .addTag('participantes', 'Gestión de participantes')
-    .addTag('tickets', 'Registro de tickets/vouchers y consulta de cupones')
-    .addTag('imagenes', 'Upload de imágenes')
+    .addTag('health',    'Verificación de que el servicio está operativo')
+    .addTag('eventos',   'Ciclo de vida de campañas: crear, editar, consultar y cerrar eventos')
+    .addTag('tickets',   'Registro de tickets de compra, acumulación de cupones y consulta del historial por participante')
+    .addTag('reportes',  'Estadísticas y reporte detallado de facturas por evento (uso backoffice)')
     .build();
 
   const document = SwaggerModule.createDocument(app, swaggerConfig);

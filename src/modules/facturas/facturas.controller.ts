@@ -27,9 +27,9 @@ import {
 } from '@nestjs/swagger';
 import { FacturasService } from './facturas.service';
 import { RegistrarParticipacionDto } from '../../common/dtos/registrar-participacion.dto';
-import { FiltrarTicketsDto } from '../../common/dtos/filtrar-tickets.dto';
 import { FiltrarPendientesDto } from '../../common/dtos/filtrar-pendientes.dto';
-import { PaginationDto } from '../../common/dtos/pagination.dto';
+import { ConsultarCuponesDto } from '../../common/dtos/consultar-cupones.dto';
+import { EventoIdQueryDto } from '../../common/dtos/evento-id-query.dto';
 import { ApiKeyGuard } from '../../common/guards/api-key.guard';
 import { HmacGuard } from '../../common/guards/hmac.guard';
 
@@ -41,32 +41,30 @@ import { HmacGuard } from '../../common/guards/hmac.guard';
 export class FacturasController {
   constructor(private readonly facturasService: FacturasService) {}
 
-  // ── Listado general ───────────────────────────────────────────────────────
-
-  @Get()
-  @ApiOperation({
-    summary: 'Listar todos los tickets registrados',
-    description:
-      'Retorna un listado paginado de todos los tickets con los datos del participante, ' +
-      'la campaña y los cupones generados. Filtros opcionales: número de ticket, ciudad, rango de fechas.',
-  })
-  @ApiOkResponse({ description: 'Listado paginado de tickets' })
-  async findAllTickets(@Query() filtros: FiltrarTicketsDto) {
-    return await this.facturasService.findAllTickets(filtros);
-  }
-
   // ── Registro ──────────────────────────────────────────────────────────────
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @UseGuards(HmacGuard)
   @ApiOperation({
-    summary: 'Registrar participación en una campaña',
+    summary: 'Registrar participación en una campaña (flujo principal)',
     description:
-      'Recibe en JSON los datos del participante, el ticket, los productos y la URL de la imagen del comprobante. ' +
-      'La imagen debe subirse previamente a `POST /api/imagenes/upload` para obtener la URL. ' +
-      'Primero valida todas las reglas de negocio. Si la escritura en DB falla, ' +
-      'guarda los datos en la tabla de pendientes y retorna 503 con el `pendienteId`.',
+      '**Endpoint central del sistema.** Ejecuta en una sola llamada todo el flujo de inscripción:\n\n' +
+      '1. Valida el DTO y las reglas de negocio (evento vigente, fechas, SKUs permitidos por la campaña).\n' +
+      '2. Busca al participante por cédula o lo crea si es la primera vez (`esUsuarioNuevo: true`).\n' +
+      '3. Crea o recupera la participación del participante en el evento.\n' +
+      '4. Verifica que el `numeroTicket` no esté duplicado en la campaña.\n' +
+      '5. Sube la imagen a Cloudinary (si `fotoBase64` se envía como Data URI) o usa la URL ya subida.\n' +
+      '6. Guarda la factura en DB y acumula los cupones vía trigger de base de datos.\n\n' +
+      '**Multiplicador de cupones:** si `multiplicador: true` y `coeficienteMultiplicador >= 2`, ' +
+      'los cupones de cada producto se multiplican por ese coeficiente.\n\n' +
+      '**Bonus:** campo opcional para sumar cupones adicionales al total del ticket ' +
+      '(ej. cupones de bienvenida o promociones especiales).\n\n' +
+      '**Tolerancia a fallos:** si Cloudinary o la escritura en DB fallan, los datos se guardan en ' +
+      '`tickets_pendientes` y se retorna `503` con el `pendienteId`. ' +
+      'El ticket puede reprocesarse con `POST /api/tickets/pendientes/:id/reintentar`.\n\n' +
+      '**Autenticación adicional:** además del `x-api-key`, este endpoint valida la firma HMAC del body ' +
+      '(`x-hmac-signature`) para prevenir manipulación de datos en tránsito.',
   })
   @ApiBody({
     description:
@@ -74,26 +72,30 @@ export class FacturasController {
       'La imagen debe enviarse como Data URI base64, generado en el frontend con FileReader.readAsDataURL(file).',
     schema: {
       type: 'object',
-      required: ['cedula', 'eventoId', 'numeroTicket', 'fotoBase64', 'productos'],
+      required: ['cedula', 'nombre', 'celular', 'ciudad', 'eventoId', 'numeroTicket', 'local', 'fotoBase64', 'productos'],
       properties: {
-        cedula:       { type: 'string', example: '12345678' },
-        nombre:       { type: 'string', example: 'Juan Pérez', description: 'Requerido solo en el primer registro' },
-        celular:      { type: 'string', example: '04141234567' },
-        ciudad:       { type: 'string', example: 'Caracas' },
-        email:        { type: 'string', example: 'juan@email.com' },
+        cedula:       { type: 'string', example: '5782341' },
+        nombre:       { type: 'string', example: 'Carencio Mantecado' },
+        celular:      { type: 'string', example: '0971234567' },
+        ciudad:       { type: 'string', example: 'Asuncion' },
+        email:        { type: 'string', example: 'juan@email.com', description: 'Opcional' },
         eventoId:     { type: 'integer', example: 1 },
-        numeroTicket: { type: 'string', example: 'TKT-2024-001' },
-        local:        { type: 'string', example: 'Super 6 La Negrita', description: 'Nombre del local o establecimiento' },
-        multiplicador: { type: 'boolean', example: false, description: 'true si el local tiene multiplicador de cupones' },
+        numeroTicket: {
+          type: 'string',
+          example: '001-2023-019000001',
+          description: 'Grupos de mínimo 3 dígitos separados por guión',
+        },
+        local:        { type: 'string', example: 'Super 6 La Negrita' },
+        multiplicador: { type: 'boolean', example: false, description: 'true si el local aplica multiplicador de cupones' },
         coeficienteMultiplicador: {
           type: 'integer',
           example: 2,
-          description: 'Requerido cuando multiplicador=true. Mínimo 2. Los cupones se multiplican por este valor (x2, x3, x4...).',
+          description: 'Solo aplica cuando multiplicador=true. Mínimo 2.',
         },
         fotoBase64: {
           type: 'string',
-          example: 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAA...',
-          description: 'Data URI de la imagen. Formato: data:image/(jpeg|jpg|png);base64,<datos>. Máx 5 MB.',
+          example: 'data:image/jpg;base64,/9j/4AAQSkZJRgABAQAA...',
+          description: 'Data URI completo. Formato: data:image/(jpeg|jpg|png);base64,<datos>. Máx 5 MB.',
         },
         productos: {
           type: 'array',
@@ -105,16 +107,17 @@ export class FacturasController {
               cantidad: { type: 'integer', minimum: 1, maximum: 1000, example: 2 },
             },
           },
-          example: [{ sku: '1kg', cantidad: 2 }, { sku: '5kg', cantidad: 1 }],
+          example: [
+            { sku: '1kg',  cantidad: 2  },
+            { sku: '5kg',  cantidad: 1  },
+            { sku: '500g', cantidad: 20 },
+          ],
         },
         bonus: {
           type: 'integer',
           example: 5,
           nullable: true,
-          description:
-            'Cupones adicionales que se suman al total generado por los productos. ' +
-            'Ejemplo: si los productos generan 10 cupones y bonus=5, el total es 15. ' +
-            'Mínimo 0. Omitir o enviar null si no aplica bonus.',
+          description: 'Cupones adicionales sumados al total generado por productos. Mínimo 0. Omitir si no aplica.',
           minimum: 0,
         },
       },
@@ -126,21 +129,21 @@ export class FacturasController {
       example: {
         mensaje: 'Participante registrado y cupones asignados correctamente',
         esUsuarioNuevo: true,
-        cedula: '12345678',
-        nombre: 'Juan Pérez',
         eventoId: 1,
-        numeroTicket: 'TKT-2024-001',
+        numeroTicket: '001-2023-019000001',
         local: 'Super 6 La Negrita',
-        multiplicadorAplicado: true,
-        coeficienteAplicado: 2,
+        multiplicadorAplicado: false,
+        coeficienteAplicado: 1,
         fotoUrl: 'https://res.cloudinary.com/demo/image/upload/v1/tickets/foto.jpg',
         productos: [
-          { sku: '1kg', cantidad: 2, cuponesBase: 10, coeficienteAplicado: 2, cuponesGenerados: 20 },
-          { sku: '5kg', cantidad: 1, cuponesBase: 15, coeficienteAplicado: 2, cuponesGenerados: 30 },
+          { sku: '1kg',  cantidad: 2,  cuponesBase: 10, coeficienteAplicado: 1, cuponesGenerados: 10 },
+          { sku: '5kg',  cantidad: 1,  cuponesBase: 15, coeficienteAplicado: 1, cuponesGenerados: 15 },
+          { sku: '500g', cantidad: 20, cuponesBase: 40, coeficienteAplicado: 1, cuponesGenerados: 40 },
         ],
-        cuponesGenerados: 50,
+        cuponesGenerados: 65,
         bonus: 5,
-        cuponesAcumulados: 55,
+        cuponesEsteRegistro: 70,
+        cuponesAcumulados: 70,
       },
     },
   })
@@ -154,12 +157,21 @@ export class FacturasController {
 
   @Get('pendientes')
   @ApiOperation({
-    summary: 'Listar tickets pendientes de reintento',
+    summary: 'Listar tickets pendientes de reintento por evento',
     description:
-      'Retorna todos los tickets que fallaron (upload o escritura DB) y fueron guardados para reintento. ' +
-      'Filtros opcionales: estado, cédula, eventoId.',
+      'Retorna los tickets que fallaron durante el registro (fallo de Cloudinary o de escritura en DB) ' +
+      'y quedaron en la tabla `tickets_pendientes` con estado `pendiente`.\n\n' +
+      '**Cuándo usarlo:** para monitorear cuántos tickets están en cola de reintento ' +
+      'antes de llamar a los endpoints de reintento masivo o individual.\n\n' +
+      '**`eventoId` es obligatorio** — los pendientes siempre se gestionan campaña a campaña. ' +
+      'Filtro opcional: `cedula` para ver los pendientes de un participante específico.',
   })
-  @ApiOkResponse({ description: 'Listado paginado de tickets pendientes' })
+  @ApiQuery({ name: 'eventoId', required: true,  type: Number, example: 1,         description: 'ID del evento (obligatorio)' })
+  @ApiQuery({ name: 'cedula',   required: false, type: String, example: '5782341', description: 'Filtrar pendientes de un participante específico' })
+  @ApiQuery({ name: 'page',     required: false, type: Number, example: 1 })
+  @ApiQuery({ name: 'limit',    required: false, type: Number, example: 20 })
+  @ApiOkResponse({ description: 'Listado paginado de tickets pendientes del evento' })
+  @ApiBadRequestResponse({ description: 'eventoId es requerido' })
   async getPendientes(@Query() filtros: FiltrarPendientesDto) {
     return await this.facturasService.getPendientes(filtros);
   }
@@ -167,31 +179,48 @@ export class FacturasController {
   @Post('pendientes/reintentar-todos')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Reintentar automáticamente todos los tickets pendientes',
+    summary: 'Reprocesar en lote todos los pendientes de un evento',
     description:
-      'Procesa en lote todos los tickets en estado "pendiente". ' +
-      'Para cada uno: re-valida las reglas de negocio, sube la imagen si aplica, y persiste en DB. ' +
-      'Retorna un resumen con el resultado de cada reintento.',
+      'Ejecuta el reintento de forma automática sobre **todos** los tickets en estado `pendiente` ' +
+      'del evento indicado. Para cada ticket:\n\n' +
+      '1. Re-valida las reglas de negocio (el evento sigue vigente, no hay duplicado, etc.).\n' +
+      '2. Sube la imagen a Cloudinary si el original falló en ese paso (el base64 está guardado).\n' +
+      '3. Persiste la factura en DB y acumula los cupones.\n\n' +
+      'Retorna un resumen con totales y el resultado individual de cada ticket ' +
+      '(`exitoso`, `fallido`, motivo del fallo).\n\n' +
+      '**Usa `POST /api/tickets/pendientes/:id/reintentar`** si solo necesitas reprocesar un ticket específico.\n\n' +
+      '**`eventoId` es obligatorio** — evita procesar accidentalmente pendientes de otra campaña.',
   })
+  @ApiQuery({ name: 'eventoId', required: true, type: Number, example: 1, description: 'ID del evento (obligatorio)' })
   @ApiOkResponse({ description: 'Resumen del lote: procesados, exitosos, fallidos y detalle por ticket' })
-  async reintentarTodosPendientes() {
-    return await this.facturasService.reintentarTodosPendientes();
+  @ApiBadRequestResponse({ description: 'eventoId es requerido' })
+  async reintentarTodosPendientes(@Query() query: EventoIdQueryDto) {
+    return await this.facturasService.reintentarTodosPendientes(query.eventoId);
   }
 
   @Post('pendientes/:id/reintentar')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Reintentar manualmente un ticket pendiente específico',
+    summary: 'Reprocesar un ticket pendiente específico',
     description:
-      'Re-valida las reglas de negocio, sube la imagen si aplica, y persiste en DB. ' +
-      'Si el ticket ya está "completado" o "procesando" retorna 400. ' +
-      'Después de 5 intentos fallidos el estado pasa a "fallido_permanente".',
+      'Ejecuta el reintento para un único ticket pendiente identificado por su **ID de ticket pendiente** (`:id`). ' +
+      'El `:id` en la URL es el identificador del registro en `tickets_pendientes`, ' +
+      'obtenido del campo `pendienteId` en la respuesta `503` original o en `GET /api/tickets/pendientes`.\n\n' +
+      'Sigue la misma lógica que el reintento masivo pero de forma individual:\n\n' +
+      '1. Re-valida las reglas de negocio contra el estado actual de la campaña.\n' +
+      '2. Sube la imagen si el fallo original fue en Cloudinary (el base64 está guardado en el registro).\n' +
+      '3. Persiste la factura y acumula los cupones.\n\n' +
+      '**Protecciones:**\n' +
+      '- Si el ticket ya está en estado `completado` o `procesando` retorna `400`.\n' +
+      '- Después de 5 intentos fallidos el estado cambia a `fallido_permanente` y deja de intentarse.',
   })
-  @ApiParam({ name: 'id', type: Number, example: 1 })
+  @ApiParam({ name: 'id', type: Number, example: 4, description: 'ID del ticket pendiente — campo `pendienteId` de la respuesta 503 original o de GET /api/tickets/pendientes' })
   @ApiOkResponse({ description: 'Resultado del reintento' })
   @ApiNotFoundResponse({ description: 'Ticket pendiente no encontrado' })
-  @ApiBadRequestResponse({ description: 'El ticket ya fue procesado o está siendo procesado' })
-  async reintentarTicketPendiente(@Param('id', ParseIntPipe) id: number) {
+  @ApiBadRequestResponse({ description: 'El ticket ya fue procesado o está siendo procesado actualmente' })
+  async reintentarTicketPendiente(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
     return await this.facturasService.reintentarTicketPendiente(id);
   }
 
@@ -199,40 +228,57 @@ export class FacturasController {
 
   @Get(':cedula/cupones')
   @ApiOperation({
-    summary: 'Consultar cupones de un participante (paginado)',
+    summary: 'Consultar cupones acumulados de un participante en una campaña',
     description:
-      'Retorna las campañas en las que participó el usuario, con sus facturas y cupones generados. ' +
-      'Paginado por campaña — use page/limit para navegar cuando el participante tiene muchas campañas.',
+      'Retorna el total de cupones acumulados por el participante en la campaña indicada, ' +
+      'junto con el historial paginado de sus tickets registrados y cuántos cupones generó cada uno.\n\n' +
+      '**Caso de uso principal:** pantalla de "mis cupones" en el frontend, donde el participante ' +
+      'ingresa su cédula para ver cuántos cupones lleva en la campaña activa.\n\n' +
+      '**`eventoId` es obligatorio** — los cupones siempre son por campaña, no globales.\n\n' +
+      '**Privacidad:** no expone nombre, cédula ni ningún dato PII del participante. ' +
+      'Solo retorna datos operativos (cupones, tickets, locales, imágenes).\n\n' +
+      'Usa `page`/`limit` para paginar el listado de facturas cuando el participante tiene muchos registros.',
   })
-  @ApiParam({ name: 'cedula', type: String, example: '12345678' })
-  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
-  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
-  @ApiOkResponse({ description: 'Campañas, facturas y cupones del participante (paginado)' })
+  @ApiParam({ name: 'cedula', type: String, example: '434549', description: 'Cédula del participante' })
+  @ApiQuery({ name: 'eventoId', required: true,  type: Number, example: 1,  description: 'ID de la campaña (obligatorio)' })
+  @ApiQuery({ name: 'page',     required: false, type: Number, example: 1  })
+  @ApiQuery({ name: 'limit',    required: false, type: Number, example: 2  })
+  @ApiOkResponse({
+    description: 'Cupones acumulados y facturas del participante en la campaña (paginado por factura)',
+    schema: {
+      example: {
+        eventoId: 1,
+        cuponesAcumulados: 70,
+        totalFacturas: 1,
+        facturas: [
+          {
+            id: 1,
+            numeroTicket: '001-2023-019000001',
+            local: 'Super 6 La Negrita',
+            multiplicador: false,
+            coeficienteMultiplicador: null,
+            sku: '1kg',
+            cantidad: 2,
+            cuponesBase: 10,
+            cuponesGenerados: 10,
+            bonus: 5,
+            totalCuponesEstaFactura: 70,
+            fotoUrl: 'https://res.cloudinary.com/demo/image/upload/v1/tickets/foto.jpg',
+            fechaCarga: '2026-04-15T10:00:00.000Z',
+          },
+        ],
+        page: 1,
+        limit: 2,
+      },
+    },
+  })
   @ApiNotFoundResponse({ description: 'Participante no encontrado' })
+  @ApiBadRequestResponse({ description: 'eventoId es requerido y debe ser un entero positivo' })
   async getCuponesByCedula(
     @Param('cedula') cedula: string,
-    @Query() paginacion: PaginationDto,
+    @Query() query: ConsultarCuponesDto,
   ) {
-    return await this.facturasService.getCuponesByCedula(cedula, paginacion);
-  }
-
-  @Get(':cedula/evento/:eventoId')
-  @ApiOperation({
-    summary: 'Consultar cupones de un participante en una campaña (paginado)',
-    description: 'Retorna los cupones acumulados y las facturas del participante en una campaña específica. Paginado por factura.',
-  })
-  @ApiParam({ name: 'cedula', type: String, example: '12345678' })
-  @ApiParam({ name: 'eventoId', type: Number, example: 1 })
-  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
-  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
-  @ApiOkResponse({ description: 'Cupones acumulados y facturas del participante en la campaña (paginado)' })
-  @ApiNotFoundResponse({ description: 'Participante no encontrado' })
-  async getCupones(
-    @Param('cedula') cedula: string,
-    @Param('eventoId', ParseIntPipe) eventoId: number,
-    @Query() paginacion: PaginationDto,
-  ) {
-    return await this.facturasService.getCuponesByCedulaEvento(cedula, eventoId, paginacion);
+    return await this.facturasService.getCuponesByCedulaEvento(cedula, query.eventoId, query);
   }
 
 }

@@ -1,32 +1,22 @@
-import { IsOptional, IsString, IsIn, Matches, IsInt, Min } from 'class-validator';
+import { IsOptional, IsString, IsInt, Min, Matches } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PaginationDto } from './pagination.dto';
 import { REGEX } from '../constants/regex.constants';
-import { EstadoPendiente } from '../../modules/facturas/entities/ticket-pendiente.entity';
-
-const ESTADOS: EstadoPendiente[] = ['pendiente', 'procesando', 'completado', 'fallido_permanente'];
 
 export class FiltrarPendientesDto extends PaginationDto {
-  @ApiPropertyOptional({
-    enum: ESTADOS,
-    example: 'pendiente',
-    description: 'Filtrar por estado del ticket pendiente',
+  @ApiProperty({
+    example: 1,
+    description: 'ID del evento (obligatorio). Solo se retornan tickets en estado pendiente.',
   })
-  @IsOptional()
-  @IsIn(ESTADOS)
-  estado?: EstadoPendiente;
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  eventoId: number;
 
-  @ApiPropertyOptional({ example: '12345678' })
+  @ApiPropertyOptional({ example: '12345678', description: 'Filtrar por cédula del participante' })
   @IsOptional()
   @IsString()
   @Matches(REGEX.CEDULA, { message: 'cedula debe tener entre 6 y 10 dígitos numéricos' })
   cedula?: string;
-
-  @ApiPropertyOptional({ example: 1 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  eventoId?: number;
 }

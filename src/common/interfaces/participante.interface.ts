@@ -9,7 +9,3 @@ export interface IParticipante {
   fechaRegistro: Date;
   fechaActualizacion: Date;
 }
-
-export interface IParticipantePublico {
-  ciudad: string | null;
-}

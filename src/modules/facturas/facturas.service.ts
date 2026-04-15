@@ -15,7 +15,6 @@ import { EventosService } from '../eventos/eventos.service';
 import { CloudinaryService } from '../../services/cloudinary.service';
 import { AuditoriaService } from '../auditoria/auditoria.service';
 import { RegistrarParticipacionDto, ProductoFacturaDto } from '../../common/dtos/registrar-participacion.dto';
-import { FiltrarTicketsDto } from '../../common/dtos/filtrar-tickets.dto';
 import { FiltrarPendientesDto } from '../../common/dtos/filtrar-pendientes.dto';
 import { CondicionCupon } from '../eventos/entities/evento.entity';
 import { SKU_CUPONES } from '../../common/constants/sku.constants';
@@ -28,9 +27,6 @@ import {
   CuponesUsuarioPaginados,
   CampanhaResumen,
   FacturaCupon,
-  IFactura,
-  TicketResumen,
-  TicketsPaginados,
   ITicketPendiente,
   PendientesPaginados,
   ResultadoReintento,
@@ -199,13 +195,15 @@ export class FacturasService {
     return resultado;
   }
 
-  async reintentarTodosPendientes(): Promise<ResultadoLoteReintento> {
-    const pendientes = await this.pendientesRepository.find({
-      where: { estado: 'pendiente' },
-      order: { fechaRegistro: 'ASC' },
-    });
+  async reintentarTodosPendientes(eventoId: number): Promise<ResultadoLoteReintento> {
+    const pendientes = await this.pendientesRepository
+      .createQueryBuilder('p')
+      .where('p.estado = :estado', { estado: 'pendiente' })
+      .andWhere("(p.datos_formulario->>'eventoId')::int = :eventoId", { eventoId })
+      .orderBy('p.fechaRegistro', 'ASC')
+      .getMany();
 
-    this.logger.log(`[PENDIENTES] Iniciando reintento masivo — ${pendientes.length} tickets`);
+    this.logger.log(`[PENDIENTES] Iniciando reintento masivo — evento: ${eventoId}, ${pendientes.length} tickets`);
 
     const resultados: ResultadoReintento[] = [];
     let exitosos = 0;
@@ -237,22 +235,16 @@ export class FacturasService {
   }
 
   async getPendientes(filtros: FiltrarPendientesDto): Promise<PendientesPaginados> {
-    const { estado, cedula, eventoId, page = 1, limit = 20 } = filtros;
+    const { cedula, eventoId, page = 1, limit = 20 } = filtros;
 
     const qb = this.pendientesRepository
       .createQueryBuilder('p')
+      .where('p.estado = :estado', { estado: 'pendiente' })
+      .andWhere("(p.datos_formulario->>'eventoId')::int = :eventoId", { eventoId })
       .orderBy('p.fechaRegistro', 'DESC');
-
-    if (estado) {
-      qb.andWhere('p.estado = :estado', { estado });
-    }
 
     if (cedula) {
       qb.andWhere("p.datos_formulario->>'cedula' = :cedula", { cedula });
-    }
-
-    if (eventoId) {
-      qb.andWhere("(p.datos_formulario->>'eventoId')::int = :eventoId", { eventoId });
     }
 
     const total = await qb.getCount();
@@ -308,6 +300,7 @@ export class FacturasService {
           cuponesBase: f.cuponesBase,
           cuponesGenerados: f.cuponesGenerados,
           bonus: f.bonus ?? null,
+          totalCuponesEstaFactura: f.cuponesGenerados + (f.bonus ?? 0),
           fotoUrl: f.fotoUrl,
           fechaCarga: f.fechaCarga,
         })),
@@ -341,65 +334,24 @@ export class FacturasService {
       eventoId: evento_id,
       cuponesAcumulados: participacion.cuponesAcumulados,
       totalFacturas,
-      facturas: facturas as IFactura[],
+      facturas: facturas.map((f) => ({
+        id: f.id,
+        numeroTicket: f.numeroTicket,
+        local: f.local,
+        multiplicador: f.multiplicador,
+        coeficienteMultiplicador: f.coeficienteMultiplicador,
+        sku: f.sku,
+        cantidad: f.cantidad,
+        cuponesBase: f.cuponesBase,
+        cuponesGenerados: f.cuponesGenerados,
+        bonus: f.bonus ?? null,
+        totalCuponesEstaFactura: f.cuponesGenerados + (f.bonus ?? 0),
+        fotoUrl: f.fotoUrl,
+        fechaCarga: f.fechaCarga,
+      })),
       page,
       limit,
     };
-  }
-
-  async findAllTickets(filtros: FiltrarTicketsDto): Promise<TicketsPaginados> {
-    const { numeroTicket, ciudad, fechaDesde, fechaHasta, page = 1, limit = 20 } = filtros;
-
-    const qb = this.facturasRepository
-      .createQueryBuilder('f')
-      .innerJoin('f.participante', 'u')
-      .innerJoin('f.evento', 'e')
-      .select([
-        'f.id                      AS id',
-        'u.ciudad                  AS ciudad',
-        'e.id                      AS "eventoId"',
-        'e.nombre                  AS "eventoNombre"',
-        'f.numero_ticket           AS "numeroTicket"',
-        'f.local                   AS local',
-        'f.multiplicador           AS multiplicador',
-        'f.coeficiente_multiplicador AS "coeficienteMultiplicador"',
-        'f.sku                     AS sku',
-        'f.cantidad                AS cantidad',
-        'f.cupones_base            AS "cuponesBase"',
-        'f.cupones_generados       AS "cuponesGenerados"',
-        'f.bonus                   AS bonus',
-        'f.foto_url                AS "fotoUrl"',
-        'f.fecha_carga             AS "fechaCarga"',
-      ])
-      .orderBy('f.fecha_carga', 'DESC');
-
-    if (numeroTicket) qb.andWhere('LOWER(f.numero_ticket) LIKE LOWER(:numeroTicket)', { numeroTicket: `%${numeroTicket}%` });
-    if (ciudad) qb.andWhere('LOWER(u.ciudad) LIKE LOWER(:ciudad)', { ciudad: `%${ciudad}%` });
-    if (fechaDesde) qb.andWhere('f.fecha_carga >= :fechaDesde', { fechaDesde });
-    if (fechaHasta) qb.andWhere('f.fecha_carga <= :fechaHasta', { fechaHasta: `${fechaHasta}T23:59:59.999Z` });
-
-    const total = await qb.getCount();
-    const raw = await qb.offset((page - 1) * limit).limit(limit).getRawMany();
-
-    const data: TicketResumen[] = raw.map((r) => ({
-      id: r.id,
-      ciudad: r.ciudad ?? null,
-      eventoId: r.eventoId,
-      eventoNombre: r.eventoNombre,
-      numeroTicket: r.numeroTicket,
-      local: r.local,
-      multiplicador: r.multiplicador,
-      coeficienteMultiplicador: r.coeficienteMultiplicador ? Number(r.coeficienteMultiplicador) : null,
-      sku: r.sku,
-      cantidad: Number(r.cantidad),
-      cuponesBase: Number(r.cuponesBase),
-      cuponesGenerados: Number(r.cuponesGenerados),
-      bonus: r.bonus !== null && r.bonus !== undefined ? Number(r.bonus) : null,
-      fotoUrl: r.fotoUrl,
-      fechaCarga: r.fechaCarga,
-    }));
-
-    return { data, total, page, limit };
   }
 
   // ── Privados ──────────────────────────────────────────────────────────────
@@ -557,11 +509,12 @@ export class FacturasService {
     });
 
     const cuponesAcumulados = participacionActualizada?.cuponesAcumulados ?? totalCuponesGenerados;
+    const cuponesEsteRegistro = totalCuponesGenerados + (bonus ?? 0);
 
     this.logger.log(
       `[TICKETS] Completado — cédula: ${cedula}, local: "${local}", ` +
       `multiplicador: ${multiplicador}${multiplicador ? ` x${coeficiente}` : ''}, ` +
-      `+${totalCuponesGenerados} cupones${bonus ? ` +${bonus} bonus` : ''} (total campaña: ${cuponesAcumulados})`,
+      `+${totalCuponesGenerados} cupones${bonus ? ` +${bonus} bonus` : ''} (este registro: ${cuponesEsteRegistro}, total campaña: ${cuponesAcumulados})`,
     );
 
     return {
@@ -578,6 +531,7 @@ export class FacturasService {
       productos: productosRegistrados,
       cuponesGenerados: totalCuponesGenerados,
       bonus,
+      cuponesEsteRegistro,
       cuponesAcumulados,
     };
   }

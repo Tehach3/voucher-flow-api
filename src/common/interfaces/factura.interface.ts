@@ -13,6 +13,7 @@ export interface IFactura {
   cantidad: number;
   cuponesBase: number;
   cuponesGenerados: number;
+  bonus: number | null;
   fotoUrl: string;
   ocrData: OcrData | null;
   activo: boolean;
@@ -39,6 +40,7 @@ export interface IRegistroParticipacionResponse {
   productos: ProductoRegistrado[];
   cuponesGenerados: number;
   bonus: number | null;
+  cuponesEsteRegistro: number;
   cuponesAcumulados: number;
 }
 
@@ -53,6 +55,7 @@ export interface FacturaCupon {
   cuponesBase: number;
   cuponesGenerados: number;
   bonus: number | null;
+  totalCuponesEstaFactura: number;
   fotoUrl: string;
   fechaCarga: Date;
 }
@@ -75,7 +78,7 @@ export interface CuponesResponse {
   eventoId: number;
   cuponesAcumulados: number;
   totalFacturas: number;
-  facturas: IFactura[];
+  facturas: FacturaCupon[];
   page: number;
   limit: number;
 }
@@ -118,27 +121,3 @@ export interface ResultadoLoteReintento {
   resultados: ResultadoReintento[];
 }
 
-export interface TicketResumen {
-  id: number;
-  ciudad: string | null;
-  eventoId: number;
-  eventoNombre: string;
-  numeroTicket: string;
-  local: string;
-  multiplicador: boolean;
-  coeficienteMultiplicador: number | null;
-  sku: string;
-  cantidad: number;
-  cuponesBase: number;
-  cuponesGenerados: number;
-  bonus: number | null;
-  fotoUrl: string;
-  fechaCarga: Date;
-}
-
-export interface TicketsPaginados {
-  data: TicketResumen[];
-  total: number;
-  page: number;
-  limit: number;
-}
