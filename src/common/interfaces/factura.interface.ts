@@ -38,6 +38,7 @@ export interface IRegistroParticipacionResponse {
   fotoUrl: string;
   productos: ProductoRegistrado[];
   cuponesGenerados: number;
+  bonus: number | null;
   cuponesAcumulados: number;
 }
 
@@ -51,6 +52,7 @@ export interface FacturaCupon {
   cantidad: number;
   cuponesBase: number;
   cuponesGenerados: number;
+  bonus: number | null;
   fotoUrl: string;
   fechaCarga: Date;
 }
@@ -129,6 +131,7 @@ export interface TicketResumen {
   cantidad: number;
   cuponesBase: number;
   cuponesGenerados: number;
+  bonus: number | null;
   fotoUrl: string;
   fechaCarga: Date;
 }

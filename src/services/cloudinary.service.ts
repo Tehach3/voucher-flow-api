@@ -80,7 +80,7 @@ export class CloudinaryService {
     const uploadOptions: Record<string, unknown> = {
       folder,
       resource_type: 'image',
-      ocr: 'adv_ocr',
+      ...(cloudinaryConfig.ocrEnabled && { ocr: 'adv_ocr' }),
     };
 
     if (safeTicket) {

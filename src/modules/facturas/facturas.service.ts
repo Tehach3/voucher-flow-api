@@ -307,6 +307,7 @@ export class FacturasService {
           cantidad: f.cantidad,
           cuponesBase: f.cuponesBase,
           cuponesGenerados: f.cuponesGenerados,
+          bonus: f.bonus ?? null,
           fotoUrl: f.fotoUrl,
           fechaCarga: f.fechaCarga,
         })),
@@ -366,6 +367,7 @@ export class FacturasService {
         'f.cantidad                AS cantidad',
         'f.cupones_base            AS "cuponesBase"',
         'f.cupones_generados       AS "cuponesGenerados"',
+        'f.bonus                   AS bonus',
         'f.foto_url                AS "fotoUrl"',
         'f.fecha_carga             AS "fechaCarga"',
       ])
@@ -392,6 +394,7 @@ export class FacturasService {
       cantidad: Number(r.cantidad),
       cuponesBase: Number(r.cuponesBase),
       cuponesGenerados: Number(r.cuponesGenerados),
+      bonus: r.bonus !== null && r.bonus !== undefined ? Number(r.bonus) : null,
       fotoUrl: r.fotoUrl,
       fechaCarga: r.fechaCarga,
     }));
@@ -496,6 +499,7 @@ export class FacturasService {
 
     const { evento, participante, esNuevo, participacion } = contexto;
     const { cedula, eventoId, numeroTicket, local, multiplicador, coeficienteMultiplicador, productos } = dto;
+    const bonus = (dto as any).bonus as number | null ?? null;
     const condiciones = (evento as any).condicionesCupones as CondicionCupon[] | null;
     const coeficiente = multiplicador ? (coeficienteMultiplicador ?? 1) : 1;
 
@@ -503,7 +507,8 @@ export class FacturasService {
     let totalCuponesGenerados = 0;
 
     await this.dataSource.transaction(async (manager) => {
-      for (const producto of productos) {
+      for (let i = 0; i < productos.length; i++) {
+        const producto = productos[i];
         const cuponesBase = this.calcularCupones(condiciones, producto);
         const cuponesGenerados = this.aplicarMultiplicador(cuponesBase, multiplicador, coeficienteMultiplicador);
 
@@ -519,6 +524,8 @@ export class FacturasService {
           cantidad: producto.cantidad,
           cuponesBase,
           cuponesGenerados,
+          // Bonus se almacena solo en la primera fila del registro; el resto queda null
+          bonus: i === 0 && bonus ? bonus : null,
           fotoUrl,
           fotoHash,
           ocrData: null,
@@ -535,6 +542,14 @@ export class FacturasService {
         });
         totalCuponesGenerados += cuponesGenerados;
       }
+
+      // Aplicar bonus: incrementar cupones_acumulados directamente en participacion_evento
+      if (bonus && bonus > 0) {
+        await manager.query(
+          'UPDATE participaciones_evento SET cupones_acumulados = cupones_acumulados + $1 WHERE id = $2',
+          [bonus, participacion.id],
+        );
+      }
     });
 
     const participacionActualizada = await this.participacionesRepository.findOne({
@@ -546,7 +561,7 @@ export class FacturasService {
     this.logger.log(
       `[TICKETS] Completado — cédula: ${cedula}, local: "${local}", ` +
       `multiplicador: ${multiplicador}${multiplicador ? ` x${coeficiente}` : ''}, ` +
-      `+${totalCuponesGenerados} cupones (total campaña: ${cuponesAcumulados})`,
+      `+${totalCuponesGenerados} cupones${bonus ? ` +${bonus} bonus` : ''} (total campaña: ${cuponesAcumulados})`,
     );
 
     return {
@@ -562,6 +577,7 @@ export class FacturasService {
       fotoUrl,
       productos: productosRegistrados,
       cuponesGenerados: totalCuponesGenerados,
+      bonus,
       cuponesAcumulados,
     };
   }
@@ -681,6 +697,7 @@ export class FacturasService {
           multiplicador: dto.multiplicador,
           coeficienteMultiplicador: dto.coeficienteMultiplicador,
           productos: dto.productos,
+          bonus: (dto as any).bonus ?? null,
         },
         fotoUrl: imagen.fotoUrl ?? null,
         fotoBufferB64: base64Puro,

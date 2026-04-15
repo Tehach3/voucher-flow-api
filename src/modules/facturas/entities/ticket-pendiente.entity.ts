@@ -19,6 +19,7 @@ export interface DatosFormulario {
   multiplicador: boolean;
   coeficienteMultiplicador?: number;
   productos: Array<{ sku: string; cantidad: number }>;
+  bonus?: number | null;
 }
 
 export type EtapaError = 'upload_imagen' | 'escritura_db';

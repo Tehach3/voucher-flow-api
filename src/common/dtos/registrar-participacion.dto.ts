@@ -142,4 +142,19 @@ export class RegistrarParticipacionDto {
   @ValidateNested({ each: true })
   @Type(() => ProductoFacturaDto)
   productos: ProductoFacturaDto[];
+
+  // ── Bonus ───────────────────────────────────────────────────────────────────
+
+  @ApiPropertyOptional({
+    example: 5,
+    description:
+      'Cupones adicionales que se suman al total generado por los productos. ' +
+      'Ejemplo: si los productos generan 10 cupones y bonus=2, el total es 12.',
+    minimum: 0,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'bonus debe ser un número entero' })
+  @Min(0, { message: 'bonus debe ser igual o mayor a 0' })
+  bonus?: number | null;
 }

@@ -70,6 +70,10 @@ export class FacturaEntity {
   @Column({ name: 'cupones_generados', type: 'integer' })
   cuponesGenerados: number;
 
+  /** Cupones bonus adicionales aplicados a esta participación (solo en la primera fila por registro, resto null) */
+  @Column({ type: 'integer', nullable: true })
+  bonus: number | null;
+
   @Column({ name: 'foto_url', type: 'varchar', length: 500 })
   fotoUrl: string;
 

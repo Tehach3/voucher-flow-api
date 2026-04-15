@@ -107,6 +107,16 @@ export class FacturasController {
           },
           example: [{ sku: '1kg', cantidad: 2 }, { sku: '5kg', cantidad: 1 }],
         },
+        bonus: {
+          type: 'integer',
+          example: 5,
+          nullable: true,
+          description:
+            'Cupones adicionales que se suman al total generado por los productos. ' +
+            'Ejemplo: si los productos generan 10 cupones y bonus=5, el total es 15. ' +
+            'Mínimo 0. Omitir o enviar null si no aplica bonus.',
+          minimum: 0,
+        },
       },
     },
   })
@@ -129,7 +139,8 @@ export class FacturasController {
           { sku: '5kg', cantidad: 1, cuponesBase: 15, coeficienteAplicado: 2, cuponesGenerados: 30 },
         ],
         cuponesGenerados: 50,
-        cuponesAcumulados: 50,
+        bonus: 5,
+        cuponesAcumulados: 55,
       },
     },
   })

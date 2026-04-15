@@ -13,4 +13,8 @@ export const cloudinaryConfig = {
       process.env.CLOUDINARY_API_SECRET
     );
   },
+  /** Si CLOUDINARY_OCR_ENABLED=true, se activa el addon adv_ocr en cada upload (requiere suscripción activa) */
+  get ocrEnabled(): boolean {
+    return process.env.CLOUDINARY_OCR_ENABLED === 'true';
+  },
 };
