@@ -1,10 +1,11 @@
 import { IsOptional, IsEnum } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { PaginationDto } from './pagination.dto';
 
 export const ESTADOS_EVENTO_PUBLICO = ['no_iniciado', 'vigente', 'vencido', 'cerrado'] as const;
 export type EstadoEventoPublico = (typeof ESTADOS_EVENTO_PUBLICO)[number];
 
-export class FiltrarEventosDto {
+export class FiltrarEventosDto extends PaginationDto {
   @ApiPropertyOptional({
     enum: ESTADOS_EVENTO_PUBLICO,
     example: 'vigente',

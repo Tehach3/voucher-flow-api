@@ -1,6 +1,8 @@
 import {
   Injectable,
   Logger,
+  HttpException,
+  HttpStatus,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -23,7 +25,7 @@ import {
   IRegistroParticipacionResponse,
   ProductoRegistrado,
   CuponesResponse,
-  CuponesUsuarioResponse,
+  CuponesUsuarioPaginados,
   CampanhaResumen,
   FacturaCupon,
   IFactura,
@@ -34,6 +36,7 @@ import {
   ResultadoReintento,
   ResultadoLoteReintento,
 } from '../../common/interfaces/factura.interface';
+import { PaginationDto } from '../../common/dtos/pagination.dto';
 import { securityConfig } from '../../config/security.config';
 import { testingConfig } from '../../config/testing.config';
 import { ERROR_CODES } from '../../common/constants/error.constants';
@@ -173,7 +176,27 @@ export class FacturasService {
       throw AppException.badRequest(ERROR_CODES.PENDING_PROCESSING, { pendienteId });
     }
 
-    return this.procesarReintento(pendiente);
+    const resultado = await this.procesarReintento(pendiente);
+
+    if (!resultado.exitoso) {
+      const httpStatus =
+        resultado.etapaFallo === 'validacion' || resultado.etapaFallo === 'imagen_no_disponible'
+          ? HttpStatus.UNPROCESSABLE_ENTITY
+          : HttpStatus.SERVICE_UNAVAILABLE;
+
+      throw new HttpException(
+        {
+          codigo: resultado.codigoError ?? (httpStatus === HttpStatus.UNPROCESSABLE_ENTITY ? ERROR_CODES.VALIDATION_ERROR : ERROR_CODES.PERSISTENCIA_FALLIDA),
+          sistema: resultado.error ?? resultado.mensaje,
+          mensaje: resultado.mensaje,
+          etapaFallo: resultado.etapaFallo,
+          pendienteId: resultado.pendienteId,
+        },
+        httpStatus,
+      );
+    }
+
+    return resultado;
   }
 
   async reintentarTodosPendientes(): Promise<ResultadoLoteReintento> {
@@ -254,13 +277,18 @@ export class FacturasService {
 
   // ── Consultas ─────────────────────────────────────────────────────────────
 
-  async getCuponesByCedula(cedula: string): Promise<CuponesUsuarioResponse> {
+  async getCuponesByCedula(cedula: string, paginacion: PaginationDto): Promise<CuponesUsuarioPaginados> {
     const participante = await this.participantesService.findByCedula(cedula);
 
-    const participaciones = await this.participacionesRepository.find({
+    const page = paginacion.page ?? 1;
+    const limit = paginacion.limit ?? 20;
+
+    const [participaciones, total] = await this.participacionesRepository.findAndCount({
       where: { participanteId: participante.id, activo: true },
       relations: ['evento', 'facturas'],
       order: { fechaRegistro: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
     });
 
     const campanhas: CampanhaResumen[] = participaciones.map((p) => ({
@@ -284,48 +312,42 @@ export class FacturasService {
         })),
     }));
 
-    return { campanhas };
+    return { campanhas, total, page, limit };
   }
 
-  async getCuponesByCedulaEvento(cedula: string, evento_id: number): Promise<CuponesResponse> {
+  async getCuponesByCedulaEvento(cedula: string, evento_id: number, paginacion: PaginationDto): Promise<CuponesResponse> {
     const participante = await this.participantesService.findByCedula(cedula);
 
     const participacion = await this.participacionesRepository.findOne({
       where: { participanteId: participante.id, eventoId: evento_id },
     });
 
+    const page = paginacion.page ?? 1;
+    const limit = paginacion.limit ?? 20;
+
     if (!participacion) {
-      return { eventoId: evento_id, cuponesAcumulados: 0, totalFacturas: 0, facturas: [] };
+      return { eventoId: evento_id, cuponesAcumulados: 0, totalFacturas: 0, facturas: [], page, limit };
     }
 
-    const facturas = await this.facturasRepository.find({
+    const [facturas, totalFacturas] = await this.facturasRepository.findAndCount({
       where: { participacionId: participacion.id },
       order: { fechaCarga: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
     });
 
     return {
       eventoId: evento_id,
       cuponesAcumulados: participacion.cuponesAcumulados,
-      totalFacturas: facturas.length,
+      totalFacturas,
       facturas: facturas as IFactura[],
+      page,
+      limit,
     };
   }
 
-  async getFacturaById(id: number): Promise<IFactura> {
-    const factura = await this.facturasRepository.findOne({
-      where: { id },
-      relations: ['participante'],
-    });
-
-    if (!factura) {
-      throw AppException.notFound(ERROR_CODES.FACTURA_NOT_FOUND, { id });
-    }
-
-    return factura as IFactura;
-  }
-
   async findAllTickets(filtros: FiltrarTicketsDto): Promise<TicketsPaginados> {
-    const { cedula, ciudad, fechaDesde, fechaHasta, page = 1, limit = 20 } = filtros;
+    const { numeroTicket, ciudad, fechaDesde, fechaHasta, page = 1, limit = 20 } = filtros;
 
     const qb = this.facturasRepository
       .createQueryBuilder('f')
@@ -349,7 +371,7 @@ export class FacturasService {
       ])
       .orderBy('f.fecha_carga', 'DESC');
 
-    if (cedula) qb.andWhere('u.cedula = :cedula', { cedula });
+    if (numeroTicket) qb.andWhere('LOWER(f.numero_ticket) LIKE LOWER(:numeroTicket)', { numeroTicket: `%${numeroTicket}%` });
     if (ciudad) qb.andWhere('LOWER(u.ciudad) LIKE LOWER(:ciudad)', { ciudad: `%${ciudad}%` });
     if (fechaDesde) qb.andWhere('f.fecha_carga >= :fechaDesde', { fechaDesde });
     if (fechaHasta) qb.andWhere('f.fecha_carga <= :fechaHasta', { fechaHasta: `${fechaHasta}T23:59:59.999Z` });
@@ -559,14 +581,19 @@ export class FacturasService {
       `[PENDIENTES] Reintentando id=${pendiente.id} — cédula: ${dto.cedula}, intento ${pendiente.intentos}`,
     );
 
+    type FaseReintento = 'validacion' | 'imagen_no_disponible' | 'upload_storage' | 'escritura_db';
+    let faseActual: FaseReintento = 'validacion';
+
     try {
       const contexto = await this.validarYPreparar(dto);
 
+      faseActual = 'upload_storage';
       let fotoUrl = pendiente.fotoUrl;
 
       if (!fotoUrl) {
         if (!pendiente.fotoBufferB64) {
-          throw new Error('No hay imagen disponible para el reintento (ni URL ni base64)');
+          faseActual = 'imagen_no_disponible';
+          throw AppException.badRequest(ERROR_CODES.IMAGE_MISSING);
         }
 
         const dataUri = pendiente.fotoMimetype
@@ -582,6 +609,7 @@ export class FacturasService {
         await this.pendientesRepository.save(pendiente);
       }
 
+      faseActual = 'escritura_db';
       const registro = await this.ejecutarTransaccionDB(contexto, dto, fotoUrl);
 
       pendiente.estado = 'completado';
@@ -595,7 +623,17 @@ export class FacturasService {
         registro,
       };
     } catch (error) {
-      const mensajeError = error instanceof Error ? error.message : String(error);
+      let mensajeError: string;
+      let codigoError: string | undefined;
+
+      if (error instanceof HttpException) {
+        const resp = error.getResponse() as Record<string, unknown>;
+        codigoError = resp.codigo as string | undefined;
+        mensajeError = (resp.mensaje as string) ?? (resp.sistema as string) ?? error.message;
+      } else {
+        mensajeError = error instanceof Error ? error.message : String(error);
+      }
+
       const nuevoEstado = pendiente.intentos >= MAX_INTENTOS ? 'fallido_permanente' : 'pendiente';
 
       pendiente.estado = nuevoEstado;
@@ -603,15 +641,17 @@ export class FacturasService {
       await this.pendientesRepository.save(pendiente);
 
       this.logger.warn(
-        `[PENDIENTES] Fallo reintento id=${pendiente.id} (intento ${pendiente.intentos}/${MAX_INTENTOS}): ${mensajeError}`,
+        `[PENDIENTES] Fallo reintento id=${pendiente.id} etapa="${faseActual}" intento ${pendiente.intentos}/${MAX_INTENTOS}: ${mensajeError}`,
       );
 
       return {
         pendienteId: pendiente.id,
         exitoso: false,
+        etapaFallo: faseActual,
+        codigoError,
         mensaje: nuevoEstado === 'fallido_permanente'
           ? `Máximo de intentos alcanzado (${MAX_INTENTOS}). Requiere intervención manual.`
-          : `Reintento fallido. Se volverá a intentar. Error: ${mensajeError}`,
+          : `Reintento fallido en etapa "${faseActual}". ${mensajeError}`,
         error: mensajeError,
       };
     }

@@ -91,10 +91,6 @@ export const APP_MESSAGES: Record<ErrorCode, ErrorMessages> = {
     sistema: 'Invoice number (numeroTicket) already registered for this campaign',
     mensaje: 'El número de factura ingresado ya generó cupones en esta campaña',
   },
-  FAC_002: {
-    sistema: 'Invoice not found for the provided id',
-    mensaje: 'La factura solicitada no existe',
-  },
   FAC_003: {
     sistema: 'One or more product SKUs are not valid for this campaign',
     mensaje: 'Uno o más productos no son válidos para esta campaña',

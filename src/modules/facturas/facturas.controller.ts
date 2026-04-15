@@ -22,12 +22,14 @@ import {
   ApiUnauthorizedResponse,
   ApiBadRequestResponse,
   ApiParam,
+  ApiQuery,
   ApiBody,
 } from '@nestjs/swagger';
 import { FacturasService } from './facturas.service';
 import { RegistrarParticipacionDto } from '../../common/dtos/registrar-participacion.dto';
 import { FiltrarTicketsDto } from '../../common/dtos/filtrar-tickets.dto';
 import { FiltrarPendientesDto } from '../../common/dtos/filtrar-pendientes.dto';
+import { PaginationDto } from '../../common/dtos/pagination.dto';
 import { ApiKeyGuard } from '../../common/guards/api-key.guard';
 import { HmacGuard } from '../../common/guards/hmac.guard';
 
@@ -46,7 +48,7 @@ export class FacturasController {
     summary: 'Listar todos los tickets registrados',
     description:
       'Retorna un listado paginado de todos los tickets con los datos del participante, ' +
-      'la campaña y los cupones generados. Filtros opcionales: cédula, ciudad, rango de fechas.',
+      'la campaña y los cupones generados. Filtros opcionales: número de ticket, ciudad, rango de fechas.',
   })
   @ApiOkResponse({ description: 'Listado paginado de tickets' })
   async findAllTickets(@Query() filtros: FiltrarTicketsDto) {
@@ -186,35 +188,40 @@ export class FacturasController {
 
   @Get(':cedula/cupones')
   @ApiOperation({
-    summary: 'Consultar cupones de un participante',
-    description: 'Retorna todas las campañas en las que participó el usuario, con sus facturas y los cupones que generó cada una.',
+    summary: 'Consultar cupones de un participante (paginado)',
+    description:
+      'Retorna las campañas en las que participó el usuario, con sus facturas y cupones generados. ' +
+      'Paginado por campaña — use page/limit para navegar cuando el participante tiene muchas campañas.',
   })
   @ApiParam({ name: 'cedula', type: String, example: '12345678' })
-  @ApiOkResponse({ description: 'Campañas, facturas y cupones del participante' })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
+  @ApiOkResponse({ description: 'Campañas, facturas y cupones del participante (paginado)' })
   @ApiNotFoundResponse({ description: 'Participante no encontrado' })
-  async getCuponesByCedula(@Param('cedula') cedula: string) {
-    return await this.facturasService.getCuponesByCedula(cedula);
+  async getCuponesByCedula(
+    @Param('cedula') cedula: string,
+    @Query() paginacion: PaginationDto,
+  ) {
+    return await this.facturasService.getCuponesByCedula(cedula, paginacion);
   }
 
   @Get(':cedula/evento/:eventoId')
-  @ApiOperation({ summary: 'Consultar cupones de un participante en una campaña' })
+  @ApiOperation({
+    summary: 'Consultar cupones de un participante en una campaña (paginado)',
+    description: 'Retorna los cupones acumulados y las facturas del participante en una campaña específica. Paginado por factura.',
+  })
   @ApiParam({ name: 'cedula', type: String, example: '12345678' })
   @ApiParam({ name: 'eventoId', type: Number, example: 1 })
-  @ApiOkResponse({ description: 'Cupones acumulados y facturas del participante en la campaña' })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
+  @ApiOkResponse({ description: 'Cupones acumulados y facturas del participante en la campaña (paginado)' })
   @ApiNotFoundResponse({ description: 'Participante no encontrado' })
   async getCupones(
     @Param('cedula') cedula: string,
     @Param('eventoId', ParseIntPipe) eventoId: number,
+    @Query() paginacion: PaginationDto,
   ) {
-    return await this.facturasService.getCuponesByCedulaEvento(cedula, eventoId);
+    return await this.facturasService.getCuponesByCedulaEvento(cedula, eventoId, paginacion);
   }
 
-  @Get('id/:id')
-  @ApiOperation({ summary: 'Obtener factura por ID' })
-  @ApiParam({ name: 'id', type: Number, example: 1 })
-  @ApiOkResponse({ description: 'Datos de la factura' })
-  @ApiNotFoundResponse({ description: 'Factura no encontrada' })
-  async getFacturaById(@Param('id', ParseIntPipe) id: number) {
-    return await this.facturasService.getFacturaById(id);
-  }
 }

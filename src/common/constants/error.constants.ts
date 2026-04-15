@@ -21,7 +21,6 @@ export const ERROR_CODES = {
 
   // ── Facturas / Tickets ────────────────────────────────────────────────────
   FACTURA_ALREADY_EXISTS:    'FAC_001',
-  FACTURA_NOT_FOUND:         'FAC_002',
   INVALID_SKU:               'FAC_003',
   PENDING_NOT_FOUND:         'FAC_004',
   PENDING_ALREADY_PROCESSED: 'FAC_005',

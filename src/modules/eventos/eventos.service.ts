@@ -44,17 +44,24 @@ export class EventosService {
     };
   }
 
-  async findAbiertos(filtros: FiltrarEventosDto): Promise<IEventoPublico[]> {
+  async findAbiertos(filtros: FiltrarEventosDto): Promise<EventosPaginados> {
     const eventos = await this.eventosRepository.find({
       where: { activo: true },
       order: { fechaCierre: 'ASC' },
     });
 
     const estadoFiltro = filtros.estado ?? 'vigente';
+    const page = filtros.page ?? 1;
+    const limit = filtros.limit ?? 20;
 
-    return eventos
+    const filtrados = eventos
       .map(this.toPublico)
       .filter((e) => e.estado === estadoFiltro);
+
+    const total = filtrados.length;
+    const data = filtrados.slice((page - 1) * limit, page * limit);
+
+    return { data, total, page, limit };
   }
 
   async findById(id: number): Promise<IEvento> {

@@ -50,7 +50,7 @@ export class EventosController {
 
   @Get('disponibles')
   @ApiOperation({
-    summary: 'Listar eventos por estado',
+    summary: 'Listar eventos por estado (paginado)',
     description:
       'Retorna eventos activos con el estado calculado dinámicamente en base a las fechas y al cierre manual. ' +
       'Estados posibles: ' +
@@ -61,7 +61,9 @@ export class EventosController {
       'Sin filtro de estado retorna únicamente los eventos `vigente`.',
   })
   @ApiQuery({ name: 'estado', required: false, enum: ['vigente', 'no_iniciado', 'vencido', 'cerrado'] })
-  @ApiOkResponse({ description: 'Lista de eventos filtrada por estado calculado' })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20 })
+  @ApiOkResponse({ description: 'Lista paginada de eventos filtrada por estado calculado' })
   findDisponibles(@Query() filtros: FiltrarEventosDto) {
     return this.eventosService.findAbiertos(filtros);
   }

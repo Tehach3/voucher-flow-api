@@ -62,8 +62,11 @@ export interface CampanhaResumen {
   facturas: FacturaCupon[];
 }
 
-export interface CuponesUsuarioResponse {
+export interface CuponesUsuarioPaginados {
   campanhas: CampanhaResumen[];
+  total: number;
+  page: number;
+  limit: number;
 }
 
 export interface CuponesResponse {
@@ -71,6 +74,8 @@ export interface CuponesResponse {
   cuponesAcumulados: number;
   totalFacturas: number;
   facturas: IFactura[];
+  page: number;
+  limit: number;
 }
 
 export interface ITicketPendiente {
@@ -98,6 +103,8 @@ export interface ResultadoReintento {
   pendienteId: number;
   exitoso: boolean;
   mensaje: string;
+  etapaFallo?: 'validacion' | 'imagen_no_disponible' | 'upload_storage' | 'escritura_db';
+  codigoError?: string;
   registro?: IRegistroParticipacionResponse;
   error?: string;
 }

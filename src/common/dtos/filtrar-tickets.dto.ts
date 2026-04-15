@@ -1,14 +1,12 @@
-import { IsOptional, IsString, IsDateString, Matches } from 'class-validator';
+import { IsOptional, IsString, IsDateString } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { PaginationDto } from './pagination.dto';
-import { REGEX } from '../constants/regex.constants';
 
 export class FiltrarTicketsDto extends PaginationDto {
-  @ApiPropertyOptional({ example: '12345678', description: 'Filtrar por cédula del participante' })
+  @ApiPropertyOptional({ example: 'TKT-2024-001', description: 'Filtrar por número de factura/ticket' })
   @IsOptional()
   @IsString()
-  @Matches(REGEX.CEDULA, { message: 'cedula debe tener entre 6 y 10 dígitos numéricos' })
-  cedula?: string;
+  numeroTicket?: string;
 
   @ApiPropertyOptional({ example: 'Caracas', description: 'Filtrar por ciudad del participante' })
   @IsOptional()

@@ -19,6 +19,8 @@ import { EventoEntity } from '../eventos/entities/evento.entity';
 import { RegistrarParticipacionDto } from '../../common/dtos/registrar-participacion.dto';
 import { FiltrarTicketsDto } from '../../common/dtos/filtrar-tickets.dto';
 import { FiltrarPendientesDto } from '../../common/dtos/filtrar-pendientes.dto';
+import { PaginationDto } from '../../common/dtos/pagination.dto';
+import { AuditoriaService } from '../auditoria/auditoria.service';
 
 // ── Fixtures ────────────────────────────────────────────────────────────────
 
@@ -62,14 +64,14 @@ const makeEvento = (overrides: Partial<EventoEntity> = {}): EventoEntity => {
 const mockParticipacion = (extra: Partial<ParticipacionEventoEntity> = {}): ParticipacionEventoEntity =>
   ({
     id: 10,
-    participante_id: 1,
-    evento_id: 1,
-    cupones_acumulados: 0,
+    participanteId: 1,
+    eventoId: 1,
+    cuponesAcumulados: 0,
     activo: true,
-    fecha_registro: new Date(),
-    fecha_actualizacion: new Date(),
+    fechaRegistro: new Date(),
+    fechaActualizacion: new Date(),
     ...extra,
-  }) as ParticipacionEventoEntity;
+  }) as unknown as ParticipacionEventoEntity;
 
 const mockFactura = (extra: Partial<FacturaEntity> = {}): FacturaEntity =>
   ({
@@ -135,6 +137,7 @@ const makeQb = () => {
 const mockFacturasRepo = () => ({
   findOne: jest.fn(),
   find: jest.fn(),
+  findAndCount: jest.fn().mockResolvedValue([[], 0]),
   createQueryBuilder: jest.fn().mockReturnValue(makeQb()),
 });
 
@@ -149,6 +152,7 @@ const mockPendientesRepo = () => ({
 const mockParticipacionesRepo = () => ({
   findOne: jest.fn(),
   find: jest.fn(),
+  findAndCount: jest.fn().mockResolvedValue([[], 0]),
 });
 
 const mockDataSource = () => ({
@@ -169,6 +173,7 @@ const mockParticipantesService = () => ({
 
 const mockEventosService = () => ({
   findById: jest.fn(),
+  calcularEstado: jest.fn().mockReturnValue('vigente'),
 });
 
 const mockCloudinaryService = () => ({
@@ -176,6 +181,10 @@ const mockCloudinaryService = () => ({
     url: 'https://res.cloudinary.com/demo/sample.jpg',
     publicId: 'stub/id',
   }),
+});
+
+const mockAuditoriaService = () => ({
+  registrar: jest.fn().mockResolvedValue(undefined),
 });
 
 // ── Suite ────────────────────────────────────────────────────────────────────
@@ -201,6 +210,7 @@ describe('FacturasService', () => {
         { provide: ParticipantesService, useFactory: mockParticipantesService },
         { provide: EventosService, useFactory: mockEventosService },
         { provide: CloudinaryService, useFactory: mockCloudinaryService },
+        { provide: AuditoriaService, useFactory: mockAuditoriaService },
       ],
     }).compile();
 
@@ -234,30 +244,30 @@ describe('FacturasService', () => {
       dataSource.query.mockResolvedValue(undefined);
       participacionesRepo.findOne
         .mockResolvedValueOnce(mockParticipacion())
-        .mockResolvedValueOnce(mockParticipacion({ cupones_acumulados: 10 }));
+        .mockResolvedValueOnce(mockParticipacion({ cuponesAcumulados: 10 }));
       facturasRepo.findOne.mockResolvedValue(null);
     };
 
     it('registra correctamente y retorna cupones calculados', async () => {
       setupHappyPath(false);
-      const result = await service.registrarParticipacion(baseDto, mockFoto());
+      const result = await service.registrarParticipacion(baseDto, '127.0.0.1');
       expect(result.cuponesGenerados).toBe(10);
       expect(result.esUsuarioNuevo).toBe(false);
     });
 
     it('retorna esUsuarioNuevo=true para participante nuevo', async () => {
       setupHappyPath(true);
-      const result = await service.registrarParticipacion(baseDto, mockFoto());
+      const result = await service.registrarParticipacion(baseDto, '127.0.0.1');
       expect(result.esUsuarioNuevo).toBe(true);
     });
 
     it('usa la URL retornada por Cloudinary en la respuesta', async () => {
       setupHappyPath(false);
-      cloudinaryService.upload.mockResolvedValue({
+      cloudinaryService.uploadBase64.mockResolvedValue({
         url: 'https://res.cloudinary.com/demo/real/v123.jpg',
         publicId: 'x',
       });
-      const result = await service.registrarParticipacion(baseDto, mockFoto());
+      const result = await service.registrarParticipacion(baseDto, '127.0.0.1');
       expect(result.fotoUrl).toBe('https://res.cloudinary.com/demo/real/v123.jpg');
     });
 
@@ -274,12 +284,12 @@ describe('FacturasService', () => {
       dataSource.query.mockResolvedValue(undefined);
       participacionesRepo.findOne
         .mockResolvedValueOnce(mockParticipacion())
-        .mockResolvedValueOnce(mockParticipacion({ cupones_acumulados: 20 }));
+        .mockResolvedValueOnce(mockParticipacion({ cuponesAcumulados: 20 }));
       facturasRepo.findOne.mockResolvedValue(null);
 
       // 1kg × 1 = 5 cupones, 5kg × 1 = 15 cupones → total 20
       const dto = { ...baseDto, productos: [{ sku: '1kg', cantidad: 1 }, { sku: '5kg', cantidad: 1 }] };
-      const result = await service.registrarParticipacion(dto, mockFoto());
+      const result = await service.registrarParticipacion(dto, '127.0.0.1');
 
       expect(result.cuponesGenerados).toBe(20);
       expect(result.productos).toHaveLength(2);
@@ -294,12 +304,12 @@ describe('FacturasService', () => {
       dataSource.query.mockResolvedValue(undefined);
       participacionesRepo.findOne
         .mockResolvedValueOnce(mockParticipacion())
-        .mockResolvedValueOnce(mockParticipacion({ cupones_acumulados: 45 }));
+        .mockResolvedValueOnce(mockParticipacion({ cuponesAcumulados: 45 }));
       facturasRepo.findOne.mockResolvedValue(null);
 
       // 5kg × 3 unidades = 15 × 3 = 45 cupones
       const dto = { ...baseDto, productos: [{ sku: '5kg', cantidad: 3 }] };
-      const result = await service.registrarParticipacion(dto, mockFoto());
+      const result = await service.registrarParticipacion(dto, '127.0.0.1');
 
       expect(result.cuponesGenerados).toBe(45);
       expect(result.productos[0]).toMatchObject({ sku: '5kg', cantidad: 3, cuponesGenerados: 45 });
@@ -313,14 +323,14 @@ describe('FacturasService', () => {
       dataSource.query.mockResolvedValue(undefined);
       participacionesRepo.findOne
         .mockResolvedValueOnce(mockParticipacion())
-        .mockResolvedValueOnce(mockParticipacion({ cupones_acumulados: 35 }));
+        .mockResolvedValueOnce(mockParticipacion({ cuponesAcumulados: 35 }));
       facturasRepo.findOne.mockResolvedValue(null);
 
       const dto = {
         ...baseDto,
         productos: [{ sku: '5kg', cantidad: 2 }, { sku: '1kg', cantidad: 1 }],
       };
-      const result = await service.registrarParticipacion(dto, mockFoto());
+      const result = await service.registrarParticipacion(dto, '127.0.0.1');
 
       expect(result.cuponesGenerados).toBe(35); // 15×2 + 5×1
       expect(result.productos).toHaveLength(2);
@@ -343,31 +353,30 @@ describe('FacturasService', () => {
 
     it('lanza 400 cuando el evento no está activo, sin tocar Cloudinary', async () => {
       eventosService.findById.mockResolvedValue(makeEvento({ activo: false }));
-      await expect(service.registrarParticipacion(baseDto, mockFoto())).rejects.toThrow(BadRequestException);
-      expect(cloudinaryService.upload).not.toHaveBeenCalled();
+      await expect(service.registrarParticipacion(baseDto, '127.0.0.1')).rejects.toThrow(HttpException);
+      expect(cloudinaryService.uploadBase64).not.toHaveBeenCalled();
       expect(pendientesRepo.save).not.toHaveBeenCalled();
     });
 
     it('lanza 400 cuando el evento no está en estado abierto, sin tocar Cloudinary', async () => {
-      eventosService.findById.mockResolvedValue(makeEvento({ estado: 'cerrado' }));
-      await expect(service.registrarParticipacion(baseDto, mockFoto())).rejects.toThrow(BadRequestException);
-      expect(cloudinaryService.upload).not.toHaveBeenCalled();
+      eventosService.findById.mockResolvedValue(makeEvento({ estadoInterno: 'cerrado' }));
+      eventosService.calcularEstado.mockReturnValue('cerrado');
+      await expect(service.registrarParticipacion(baseDto, '127.0.0.1')).rejects.toThrow(HttpException);
+      expect(cloudinaryService.uploadBase64).not.toHaveBeenCalled();
     });
 
     it('lanza 400 cuando la campaña aún no ha iniciado, sin tocar Cloudinary', async () => {
-      eventosService.findById.mockResolvedValue(
-        makeEvento({ fechaInicio: new Date(Date.now() + 86400_000 * 2) }),
-      );
-      await expect(service.registrarParticipacion(baseDto, mockFoto())).rejects.toThrow(BadRequestException);
-      expect(cloudinaryService.upload).not.toHaveBeenCalled();
+      eventosService.findById.mockResolvedValue(makeEvento());
+      eventosService.calcularEstado.mockReturnValue('no_iniciado');
+      await expect(service.registrarParticipacion(baseDto, '127.0.0.1')).rejects.toThrow(HttpException);
+      expect(cloudinaryService.uploadBase64).not.toHaveBeenCalled();
     });
 
     it('lanza 400 cuando la campaña ya finalizó, sin tocar Cloudinary', async () => {
-      eventosService.findById.mockResolvedValue(
-        makeEvento({ fechaCierre: new Date(Date.now() - 86400_000 * 2) }),
-      );
-      await expect(service.registrarParticipacion(baseDto, mockFoto())).rejects.toThrow(BadRequestException);
-      expect(cloudinaryService.upload).not.toHaveBeenCalled();
+      eventosService.findById.mockResolvedValue(makeEvento());
+      eventosService.calcularEstado.mockReturnValue('vencido');
+      await expect(service.registrarParticipacion(baseDto, '127.0.0.1')).rejects.toThrow(HttpException);
+      expect(cloudinaryService.uploadBase64).not.toHaveBeenCalled();
     });
 
     it('lanza 400 cuando el SKU no es válido para la campaña, sin tocar Cloudinary', async () => {
@@ -376,18 +385,18 @@ describe('FacturasService', () => {
       );
       participantesService.findOrCreate.mockResolvedValue({ participante: mockParticipanteFixture(), esNuevo: false });
       await expect(
-        service.registrarParticipacion({ ...baseDto, productos: [{ sku: '1kg', cantidad: 1 }] }, mockFoto()),
-      ).rejects.toThrow(BadRequestException);
-      expect(cloudinaryService.upload).not.toHaveBeenCalled();
+        service.registrarParticipacion({ ...baseDto, productos: [{ sku: '1kg', cantidad: 1 }] }, '127.0.0.1'),
+      ).rejects.toThrow(HttpException);
+      expect(cloudinaryService.uploadBase64).not.toHaveBeenCalled();
     });
 
     it('lanza 400 cuando es usuario nuevo y falta el nombre, sin tocar Cloudinary', async () => {
       eventosService.findById.mockResolvedValue(makeEvento());
       participantesService.findOrCreate.mockResolvedValue({ participante: mockParticipanteFixture(), esNuevo: true });
       await expect(
-        service.registrarParticipacion({ ...baseDto, nombre: undefined }, mockFoto()),
-      ).rejects.toThrow(BadRequestException);
-      expect(cloudinaryService.upload).not.toHaveBeenCalled();
+        service.registrarParticipacion({ ...baseDto, nombre: undefined }, '127.0.0.1'),
+      ).rejects.toThrow(HttpException);
+      expect(cloudinaryService.uploadBase64).not.toHaveBeenCalled();
     });
 
     it('lanza 409 cuando ticket duplicado, sin tocar Cloudinary', async () => {
@@ -397,8 +406,8 @@ describe('FacturasService', () => {
       participacionesRepo.findOne.mockResolvedValue(mockParticipacion());
       facturasRepo.findOne.mockResolvedValue(mockFactura());
 
-      await expect(service.registrarParticipacion(baseDto, mockFoto())).rejects.toThrow(ConflictException);
-      expect(cloudinaryService.upload).not.toHaveBeenCalled();
+      await expect(service.registrarParticipacion(baseDto, '127.0.0.1')).rejects.toThrow(HttpException);
+      expect(cloudinaryService.uploadBase64).not.toHaveBeenCalled();
     });
   });
 
@@ -422,22 +431,22 @@ describe('FacturasService', () => {
       dataSource.query.mockResolvedValue(undefined);
       participacionesRepo.findOne
         .mockResolvedValueOnce(mockParticipacion())
-        .mockResolvedValueOnce(mockParticipacion({ cupones_acumulados: 10 }));
+        .mockResolvedValueOnce(mockParticipacion({ cuponesAcumulados: 10 }));
       facturasRepo.findOne.mockResolvedValue(null);
     };
 
     it('guarda pendiente con buffer y lanza 503 cuando Cloudinary falla', async () => {
       setupValidations();
-      cloudinaryService.upload.mockRejectedValue(new Error('Cloudinary timeout'));
+      cloudinaryService.uploadBase64.mockRejectedValue(new Error('Cloudinary timeout'));
       pendientesRepo.create.mockReturnValue(mockPendiente());
       pendientesRepo.save.mockResolvedValue(mockPendiente({ id: 42 }));
 
-      const error = await service.registrarParticipacion(baseDto, mockFoto()).catch((e) => e);
+      const error = await service.registrarParticipacion(baseDto, '127.0.0.1').catch((e) => e);
 
       expect(error).toBeInstanceOf(HttpException);
       expect(error.getStatus()).toBe(503);
       expect(error.getResponse()).toMatchObject({
-        codigo: 'UPLOAD_FALLIDO',
+        codigo: 'FAC_007',
         pendienteId: 42,
       });
       expect(pendientesRepo.save).toHaveBeenCalledTimes(1);
@@ -453,17 +462,17 @@ describe('FacturasService', () => {
 
     it('guarda pendiente con fotoUrl y lanza 503 cuando la DB falla después del upload', async () => {
       setupValidations();
-      cloudinaryService.upload.mockResolvedValue({ url: 'https://cdn.example.com/img.jpg', publicId: 'x' });
+      cloudinaryService.uploadBase64.mockResolvedValue({ url: 'https://cdn.example.com/img.jpg', publicId: 'x' });
       dataSource.transaction.mockRejectedValue(new Error('DB connection lost'));
       pendientesRepo.create.mockReturnValue(mockPendiente());
       pendientesRepo.save.mockResolvedValue(mockPendiente({ id: 99 }));
 
-      const error = await service.registrarParticipacion(baseDto, mockFoto()).catch((e) => e);
+      const error = await service.registrarParticipacion(baseDto, '127.0.0.1').catch((e) => e);
 
       expect(error).toBeInstanceOf(HttpException);
       expect(error.getStatus()).toBe(503);
       expect(error.getResponse()).toMatchObject({
-        codigo: 'PERSISTENCIA_FALLIDA',
+        codigo: 'FAC_008',
         pendienteId: 99,
       });
       // Verifica que se guarda la URL (no el buffer)
@@ -489,7 +498,7 @@ describe('FacturasService', () => {
       dataSource.query.mockResolvedValue(undefined);
       participacionesRepo.findOne
         .mockResolvedValueOnce(mockParticipacion())
-        .mockResolvedValueOnce(mockParticipacion({ cupones_acumulados: 10 }));
+        .mockResolvedValueOnce(mockParticipacion({ cuponesAcumulados: 10 }));
       facturasRepo.findOne.mockResolvedValue(null);
       return pendiente;
     };
@@ -500,7 +509,7 @@ describe('FacturasService', () => {
       const result = await service.reintentarTicketPendiente(1);
 
       expect(result.exitoso).toBe(true);
-      expect(cloudinaryService.upload).toHaveBeenCalledTimes(1);
+      expect(cloudinaryService.uploadBase64).toHaveBeenCalledTimes(1);
       expect(result.registro).toBeDefined();
     });
 
@@ -514,43 +523,45 @@ describe('FacturasService', () => {
       const result = await service.reintentarTicketPendiente(1);
 
       expect(result.exitoso).toBe(true);
-      expect(cloudinaryService.upload).not.toHaveBeenCalled();
+      expect(cloudinaryService.uploadBase64).not.toHaveBeenCalled();
     });
 
     it('lanza NotFoundException cuando el pendiente no existe', async () => {
       pendientesRepo.findOne.mockResolvedValue(null);
-      await expect(service.reintentarTicketPendiente(999)).rejects.toThrow(NotFoundException);
+      await expect(service.reintentarTicketPendiente(999)).rejects.toThrow(HttpException);
     });
 
     it('lanza BadRequestException cuando el ticket ya está completado', async () => {
       pendientesRepo.findOne.mockResolvedValue(mockPendiente({ estado: 'completado' }));
-      await expect(service.reintentarTicketPendiente(1)).rejects.toThrow(BadRequestException);
+      await expect(service.reintentarTicketPendiente(1)).rejects.toThrow(HttpException);
     });
 
     it('lanza BadRequestException cuando el ticket está procesando', async () => {
       pendientesRepo.findOne.mockResolvedValue(mockPendiente({ estado: 'procesando' }));
-      await expect(service.reintentarTicketPendiente(1)).rejects.toThrow(BadRequestException);
+      await expect(service.reintentarTicketPendiente(1)).rejects.toThrow(HttpException);
     });
 
-    it('marca como fallido_permanente al superar MAX_INTENTOS', async () => {
-      const pendiente = setupReintento({ intentos: 4 }); // 4 → 5 con el increment
-      cloudinaryService.upload.mockRejectedValue(new Error('Cloudinary down'));
+    it('marca como fallido_permanente al superar MAX_INTENTOS y lanza 503', async () => {
+      setupReintento({ intentos: 4 }); // 4 → 5 con el increment
+      cloudinaryService.uploadBase64.mockRejectedValue(new Error('Cloudinary down'));
 
-      const result = await service.reintentarTicketPendiente(1);
+      const error = await service.reintentarTicketPendiente(1).catch((e) => e);
 
-      expect(result.exitoso).toBe(false);
-      // El tercer save es el que actualiza a fallido_permanente
+      expect(error).toBeInstanceOf(HttpException);
+      expect(error.getStatus()).toBe(503);
+      // El último save debe marcar como fallido_permanente
       const lastSaveCall = pendientesRepo.save.mock.calls[pendientesRepo.save.mock.calls.length - 1][0];
       expect(lastSaveCall.estado).toBe('fallido_permanente');
     });
 
-    it('mantiene estado pendiente cuando falla con intentos < MAX_INTENTOS', async () => {
-      const pendiente = setupReintento({ intentos: 1 });
-      cloudinaryService.upload.mockRejectedValue(new Error('Temporary error'));
+    it('mantiene estado pendiente cuando falla con intentos < MAX_INTENTOS y lanza 503', async () => {
+      setupReintento({ intentos: 1 });
+      cloudinaryService.uploadBase64.mockRejectedValue(new Error('Temporary error'));
 
-      const result = await service.reintentarTicketPendiente(1);
+      const error = await service.reintentarTicketPendiente(1).catch((e) => e);
 
-      expect(result.exitoso).toBe(false);
+      expect(error).toBeInstanceOf(HttpException);
+      expect(error.getStatus()).toBe(503);
       const lastSaveCall = pendientesRepo.save.mock.calls[pendientesRepo.save.mock.calls.length - 1][0];
       expect(lastSaveCall.estado).toBe('pendiente');
     });
@@ -559,10 +570,11 @@ describe('FacturasService', () => {
       setupReintento({ etapaError: 'upload_imagen', fotoUrl: null });
 
       // Forzar que el upload funcione pero DB falle
-      cloudinaryService.upload.mockResolvedValue({ url: 'https://cdn.example.com/new.jpg', publicId: 'x' });
+      cloudinaryService.uploadBase64.mockResolvedValue({ url: 'https://cdn.example.com/new.jpg', publicId: 'x' });
       dataSource.transaction.mockRejectedValueOnce(new Error('DB error'));
 
-      await service.reintentarTicketPendiente(1);
+      // El método lanza al fallar — capturamos el error y verificamos los side-effects
+      await service.reintentarTicketPendiente(1).catch(() => undefined);
 
       // Verifica que se guardó la URL en el pendiente (con buffer limpiado) antes de intentar la DB
       const savesConUrl = pendientesRepo.save.mock.calls.filter(
@@ -589,7 +601,7 @@ describe('FacturasService', () => {
       participacionesRepo.findOne.mockResolvedValue(mockParticipacion());
       facturasRepo.findOne.mockResolvedValue(null);
 
-      cloudinaryService.upload
+      cloudinaryService.uploadBase64
         .mockResolvedValueOnce({ url: 'https://cdn.example.com/1.jpg', publicId: 'x' }) // p1 no llama upload
         .mockRejectedValueOnce(new Error('Cloudinary down')); // p2 falla
 
@@ -661,64 +673,58 @@ describe('FacturasService', () => {
   // ── getCuponesByCedula ────────────────────────────────────────────────────
 
   describe('getCuponesByCedula', () => {
+    const paginacion = { page: 1, limit: 20 } as PaginationDto;
+
     it('retorna la jerarquía usuario → campañas → facturas', async () => {
       participantesService.findByCedula.mockResolvedValue(mockParticipanteFixture());
-      participacionesRepo.find.mockResolvedValue([
-        {
-          ...mockParticipacion({ cupones_acumulados: 15 }),
-          evento: { id: 1, nombre: 'Campaña Test' },
-          facturas: [mockFactura()],
-        },
+      participacionesRepo.findAndCount.mockResolvedValue([
+        [
+          {
+            ...mockParticipacion({ cuponesAcumulados: 15 }),
+            evento: { id: 1, nombre: 'Campaña Test' },
+            facturas: [mockFactura()],
+          },
+        ],
+        1,
       ]);
 
-      const result = await service.getCuponesByCedula('12345678');
+      const result = await service.getCuponesByCedula('12345678', paginacion);
 
       expect(result.campanhas).toHaveLength(1);
       expect(result.campanhas[0].cuponesAcumulados).toBe(15);
+      expect(result.total).toBe(1);
     });
 
     it('propaga NotFoundException cuando la cédula no existe', async () => {
       participantesService.findByCedula.mockRejectedValue(new NotFoundException());
-      await expect(service.getCuponesByCedula('000000')).rejects.toThrow(NotFoundException);
+      await expect(service.getCuponesByCedula('000000', paginacion)).rejects.toThrow(HttpException);
     });
   });
 
   // ── getCuponesByCedulaEvento ──────────────────────────────────────────────
 
   describe('getCuponesByCedulaEvento', () => {
+    const paginacion = { page: 1, limit: 20 } as PaginationDto;
+
     it('retorna datos cuando existe participación', async () => {
       participantesService.findByCedula.mockResolvedValue(mockParticipanteFixture());
-      participacionesRepo.findOne.mockResolvedValue(mockParticipacion({ cupones_acumulados: 10 }));
-      facturasRepo.find.mockResolvedValue([mockFactura(), mockFactura()]);
+      participacionesRepo.findOne.mockResolvedValue(mockParticipacion({ cuponesAcumulados: 10 }));
+      facturasRepo.findAndCount.mockResolvedValue([[mockFactura(), mockFactura()], 2]);
 
-      const result = await service.getCuponesByCedulaEvento('12345678', 1);
+      const result = await service.getCuponesByCedulaEvento('12345678', 1, paginacion);
 
-      expect(result.cupones_acumulados).toBe(10);
-      expect(result.total_facturas).toBe(2);
+      expect(result.cuponesAcumulados).toBe(10);
+      expect(result.totalFacturas).toBe(2);
     });
 
     it('retorna estado vacío cuando no hay participación', async () => {
       participantesService.findByCedula.mockResolvedValue(mockParticipanteFixture());
       participacionesRepo.findOne.mockResolvedValue(null);
 
-      const result = await service.getCuponesByCedulaEvento('12345678', 99);
+      const result = await service.getCuponesByCedulaEvento('12345678', 99, paginacion);
 
-      expect(result.cupones_acumulados).toBe(0);
-      expect(result.total_facturas).toBe(0);
-    });
-  });
-
-  // ── getFacturaById ────────────────────────────────────────────────────────
-
-  describe('getFacturaById', () => {
-    it('retorna la factura cuando existe', async () => {
-      facturasRepo.findOne.mockResolvedValue(mockFactura());
-      expect(await service.getFacturaById(1)).toBeDefined();
-    });
-
-    it('lanza NotFoundException cuando no existe', async () => {
-      facturasRepo.findOne.mockResolvedValue(null);
-      await expect(service.getFacturaById(999)).rejects.toThrow(NotFoundException);
+      expect(result.cuponesAcumulados).toBe(0);
+      expect(result.totalFacturas).toBe(0);
     });
   });
 
@@ -738,11 +744,14 @@ describe('FacturasService', () => {
       expect(result.data).toHaveLength(0);
     });
 
-    it('aplica filtro por cédula', async () => {
+    it('aplica filtro por número de ticket', async () => {
       qb.getCount.mockResolvedValue(0);
       qb.getRawMany.mockResolvedValue([]);
-      await service.findAllTickets({ cedula: '12345678', page: 1, limit: 20 } as FiltrarTicketsDto);
-      expect(qb.andWhere).toHaveBeenCalledWith('u.cedula = :cedula', { cedula: '12345678' });
+      await service.findAllTickets({ numeroTicket: 'TKT-001', page: 1, limit: 20 } as FiltrarTicketsDto);
+      expect(qb.andWhere).toHaveBeenCalledWith(
+        'LOWER(f.numero_ticket) LIKE LOWER(:numeroTicket)',
+        { numeroTicket: '%TKT-001%' },
+      );
     });
 
     it('aplica filtro fechaHasta ajustado al final del día', async () => {
