@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Stress test results
+stress-test/resultado-*.json
+
 # Build output
 dist/
 build/

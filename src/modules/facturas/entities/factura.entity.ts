@@ -74,8 +74,13 @@ export class FacturaEntity {
   @Column({ type: 'integer', nullable: true })
   bonus: number | null;
 
-  @Column({ name: 'foto_url', type: 'varchar', length: 500 })
-  fotoUrl: string;
+  /** null mientras el upload async a Cloudinary está en curso */
+  @Column({ name: 'foto_url', type: 'varchar', length: 500, nullable: true })
+  fotoUrl: string | null;
+
+  /** Estado del upload de la foto: procesando → completada | fallida */
+  @Column({ name: 'foto_estado', type: 'varchar', length: 20, default: 'completada' })
+  fotoEstado: 'completada' | 'procesando' | 'fallida';
 
   /** SHA-256 del contenido base64 de la imagen. Nullable: se llena solo cuando SECURITY_IMAGE_HASH_ENABLED=true */
   @Column({ name: 'foto_hash', type: 'varchar', length: 64, nullable: true })

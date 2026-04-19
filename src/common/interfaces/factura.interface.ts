@@ -14,7 +14,7 @@ export interface IFactura {
   cuponesBase: number;
   cuponesGenerados: number;
   bonus: number | null;
-  fotoUrl: string;
+  fotoUrl: string | null;  // null si el ticket fue guardado con upload pendiente y aún no se actualizó
   ocrData: OcrData | null;
   activo: boolean;
   fechaCarga: Date;
@@ -36,7 +36,10 @@ export interface IRegistroParticipacionResponse {
   local: string;
   multiplicadorAplicado: boolean;
   coeficienteAplicado: number;
+  /** URL de la foto. Placeholder mientras el upload async está en curso. */
   fotoUrl: string;
+  /** Estado del upload async. 'procesando' = la URL es un placeholder, aún no es la definitiva. */
+  fotoEstado: 'completada' | 'procesando';
   productos: ProductoRegistrado[];
   cuponesGenerados: number;
   bonus: number | null;
@@ -56,7 +59,7 @@ export interface FacturaCupon {
   cuponesGenerados: number;
   bonus: number | null;
   totalCuponesEstaFactura: number;
-  fotoUrl: string;
+  fotoUrl: string | null;
   fechaCarga: Date;
 }
 

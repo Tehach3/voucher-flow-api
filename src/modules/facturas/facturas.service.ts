@@ -5,7 +5,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DataSource } from 'typeorm';
+import { Repository, DataSource, In } from 'typeorm';
 import * as crypto from 'crypto';
 import { FacturaEntity } from './entities/factura.entity';
 import { TicketPendienteEntity, DatosFormulario, EtapaError, MAX_INTENTOS } from './entities/ticket-pendiente.entity';
@@ -17,7 +17,7 @@ import { AuditoriaService } from '../auditoria/auditoria.service';
 import { RegistrarParticipacionDto, ProductoFacturaDto } from '../../common/dtos/registrar-participacion.dto';
 import { FiltrarPendientesDto } from '../../common/dtos/filtrar-pendientes.dto';
 import { CondicionCupon } from '../eventos/entities/evento.entity';
-import { SKU_CUPONES } from '../../common/constants/sku.constants';
+import { SKU_CUPONES, FOTO_PROCESANDO_URL } from '../../common/constants/sku.constants';
 import { ParticipanteEntity } from '../participantes/entities/participante.entity';
 import { IEvento } from '../../common/interfaces/evento.interface';
 import {
@@ -38,12 +38,18 @@ import { testingConfig } from '../../config/testing.config';
 import { ERROR_CODES } from '../../common/constants/error.constants';
 import { AppException } from '../../common/exceptions/app.exception';
 
-// Estado intermedio que comparten registrarParticipacion y reintentarTicketPendiente
 interface ContextoRegistro {
   evento: IEvento;
   participante: ParticipanteEntity;
   esNuevo: boolean;
   participacion: ParticipacionEventoEntity;
+}
+
+export interface FotoEstadoResponse {
+  numeroTicket: string;
+  eventoId: number;
+  fotoEstado: 'completada' | 'procesando' | 'fallida' | 'no_encontrado';
+  fotoUrl: string | null;
 }
 
 @Injectable()
@@ -73,7 +79,7 @@ export class FacturasService {
     const { cedula, eventoId, fotoBase64 } = dto;
     this.logger.log(`[TICKETS] Inicio registro — evento: ${eventoId}`);
 
-    // Fase 0 (opcional): verificar unicidad de imagen antes de cualquier otra validación
+    // Fase 0: verificar unicidad de imagen
     const fotoHash = this.calcularHashImagen(fotoBase64);
     if (fotoHash) {
       const duplicada = await this.facturasRepository.findOne({
@@ -91,67 +97,198 @@ export class FacturasService {
       }
     }
 
-    // Fases 1-6: validaciones de negocio (fallan con 4xx, nunca guardan pendiente)
+    // Fases 1-6: validaciones de negocio
     const contexto = await this.validarYPreparar(dto);
-    this.logger.log(`[TICKETS] Validaciones OK — subiendo imagen`);
+    this.logger.log(`[TICKETS] Validaciones OK — guardando en BD`);
 
-    // Fase 7: subir imagen a Cloudinary
-    const fotoMimetype = this.extraerMimetype(fotoBase64);
-    let fotoUrl: string;
+    // Fase 7: persistir en DB con URL placeholder mientras el upload async corre en background
+    let resultado: IRegistroParticipacionResponse;
     try {
-      const { url } = await this.cloudinaryService.uploadBase64(fotoBase64, eventoId, dto.numeroTicket);
-      fotoUrl = url;
-    } catch (uploadError) {
-      const mensaje = uploadError instanceof Error ? uploadError.message : String(uploadError);
-      this.logger.error(`[TICKETS] Fallo upload — evento: ${eventoId}: ${mensaje}`);
-
-      const pendiente = await this.guardarPendiente(dto, 'upload_imagen', mensaje, {
-        fotoBase64,
-        fotoMimetype,
-      });
-      await this.auditoriaService.registrar({
-        eventoTipo: 'TICKET_FALLIDO',
-        entidad:    'tickets_pendientes',
-        entidadId:  pendiente.id,
-        ipAddress,
-        datosNuevos: { cedulaHash: AuditoriaService.hashCedula(cedula), eventoId, etapa: 'upload_imagen', error: mensaje },
-      });
-      throw AppException.serviceUnavailable(ERROR_CODES.UPLOAD_FALLIDO, {
-        pendienteId: pendiente.id,
-      });
-    }
-
-    // Fase 8: persistir en DB
-    try {
-      const resultado = await this.ejecutarTransaccionDB(contexto, dto, fotoUrl, fotoHash);
-      await this.auditoriaService.registrar({
-        eventoTipo: 'TICKET_REGISTRADO',
-        entidad:    'tickets',
-        ipAddress,
-        datosNuevos: {
-          cedulaHash: AuditoriaService.hashCedula(cedula),
-          eventoId,
-          numeroTicket: dto.numeroTicket,
-          local: dto.local,
-          cuponesGenerados: resultado.cuponesGenerados,
-        },
-      });
-      return resultado;
+      resultado = await this.ejecutarTransaccionDB(contexto, dto, FOTO_PROCESANDO_URL, fotoHash);
     } catch (dbError) {
       const mensaje = dbError instanceof Error ? dbError.message : String(dbError);
       this.logger.error(`[TICKETS] Fallo DB — evento: ${eventoId}: ${mensaje}`);
+      throw AppException.serviceUnavailable(ERROR_CODES.PERSISTENCIA_FALLIDA);
+    }
 
-      const pendiente = await this.guardarPendiente(dto, 'escritura_db', mensaje, { fotoUrl });
-      await this.auditoriaService.registrar({
-        eventoTipo: 'TICKET_FALLIDO',
-        entidad:    'tickets_pendientes',
-        entidadId:  pendiente.id,
+    await this.auditoriaService.registrar({
+      eventoTipo: 'TICKET_REGISTRADO',
+      entidad:    'tickets',
+      ipAddress,
+      datosNuevos: {
+        cedulaHash: AuditoriaService.hashCedula(cedula),
+        eventoId,
+        numeroTicket: dto.numeroTicket,
+        local: dto.local,
+        cuponesGenerados: resultado.cuponesGenerados,
+      },
+    });
+
+    // Fase 8: upload a Cloudinary en background — no bloquea la respuesta HTTP
+    // Si falla: hace rollback de los tickets + cupones para que el frontend pueda reintentar
+    const fotoMimetype = this.extraerMimetype(fotoBase64);
+    setImmediate(() => {
+      this.subirFotoAsync(
+        dto,
+        fotoBase64,
+        fotoMimetype,
+        fotoHash,
         ipAddress,
-        datosNuevos: { cedulaHash: AuditoriaService.hashCedula(cedula), eventoId, etapa: 'escritura_db', error: mensaje },
+      ).catch((err) =>
+        this.logger.error(`[TICKETS] Error inesperado en subirFotoAsync: ${err?.message ?? err}`),
+      );
+    });
+
+    return resultado;
+  }
+
+  /**
+   * Consulta el estado del upload de foto de un ticket específico.
+   * El frontend llama a este endpoint para saber si debe reintentar.
+   */
+  async getFotoEstado(
+    cedula: string,
+    numeroTicket: string,
+    eventoId: number,
+  ): Promise<FotoEstadoResponse> {
+    const participante = await this.participantesService.findByCedula(cedula).catch(() => null);
+    if (!participante) {
+      return { numeroTicket, eventoId, fotoEstado: 'no_encontrado', fotoUrl: null };
+    }
+
+    const ticket = await this.facturasRepository.findOne({
+      where: { participanteId: participante.id, eventoId, numeroTicket },
+    });
+
+    if (!ticket) {
+      return { numeroTicket, eventoId, fotoEstado: 'no_encontrado', fotoUrl: null };
+    }
+
+    return {
+      numeroTicket,
+      eventoId,
+      fotoEstado: ticket.fotoEstado,
+      fotoUrl: ticket.fotoUrl,
+    };
+  }
+
+  /**
+   * Sube la foto a Cloudinary en background.
+   * Éxito → actualiza fotoUrl + fotoEstado en los tickets.
+   * Fallo  → rollback completo (elimina tickets + revierte cupones) y guarda pendiente
+   *          para que el front reciba 'fallida' en la consulta de estado y pueda reintentar.
+   */
+  private async subirFotoAsync(
+    dto: RegistrarParticipacionDto,
+    fotoBase64: string,
+    fotoMimetype: string,
+    fotoHash: string | null,
+    ipAddress?: string,
+  ): Promise<void> {
+    const { cedula, eventoId, numeroTicket } = dto;
+
+    let ticketIds: number[] = [];
+    let participacionId: number | null = null;
+    let cuponesARevertir = 0;
+    let bonusARevertir = 0;
+
+    // Obtener los ids de los tickets recién creados para esta combinación
+    const participante = await this.participantesService.findByCedula(cedula).catch(() => null);
+    if (participante) {
+      const tickets = await this.facturasRepository.find({
+        where: { participanteId: participante.id, eventoId, numeroTicket, fotoEstado: 'procesando' },
       });
-      throw AppException.serviceUnavailable(ERROR_CODES.PERSISTENCIA_FALLIDA, {
-        pendienteId: pendiente.id,
-      });
+      ticketIds = tickets.map((t) => t.id);
+      participacionId = tickets[0]?.participacionId ?? null;
+      cuponesARevertir = tickets.reduce((sum, t) => sum + t.cuponesGenerados, 0);
+      bonusARevertir   = tickets.find((t) => t.bonus != null)?.bonus ?? 0;
+    }
+
+    try {
+      const { url } = await this.cloudinaryService.uploadBase64(fotoBase64, eventoId, numeroTicket);
+
+      if (ticketIds.length > 0) {
+        await this.facturasRepository.update(
+          { id: In(ticketIds) },
+          { fotoUrl: url, fotoEstado: 'completada' },
+        );
+      }
+
+      this.logger.log(`[TICKETS] Foto subida OK — evento: ${eventoId}, ticket: ${numeroTicket}`);
+    } catch (uploadError) {
+      const mensaje = uploadError instanceof Error ? uploadError.message : String(uploadError);
+      this.logger.error(`[TICKETS] Fallo upload async — evento: ${eventoId}, ticket: ${numeroTicket}: ${mensaje}`);
+
+      // Paso 1: guardar pendiente con el base64 ANTES del rollback.
+      // Si la BD falla después (rollback falla), el base64 ya está persistido
+      // y el reintento automático puede recuperar la imagen.
+      let pendienteId: number | null = null;
+      try {
+        const pendiente = await this.guardarPendiente(dto, 'upload_imagen', mensaje, {
+          fotoBase64,
+          fotoMimetype: fotoMimetype ?? undefined,
+        });
+        pendienteId = pendiente.id;
+        this.logger.warn(
+          `[TICKETS] Pendiente creado id=${pendienteId} — evento: ${eventoId}, ticket: ${numeroTicket}`,
+        );
+      } catch (pendienteError) {
+        // Si la BD está caída tampoco podemos guardar el pendiente.
+        // Solo queda registrar en el log con el base64 truncado para diagnóstico manual.
+        const msgPe = pendienteError instanceof Error ? pendienteError.message : String(pendienteError);
+        this.logger.error(
+          `[TICKETS] CRÍTICO — no se pudo guardar pendiente: ${msgPe}. ` +
+          `Datos: evento=${eventoId} ticket=${numeroTicket} base64_len=${fotoBase64?.length ?? 0}`,
+        );
+      }
+
+      // Paso 2: rollback — eliminar tickets + revertir cupones en una sola transacción
+      if (ticketIds.length > 0 && participacionId !== null) {
+        try {
+          await this.dataSource.transaction(async (manager) => {
+            const totalARevertir = cuponesARevertir + bonusARevertir;
+            if (totalARevertir > 0) {
+              await manager.query(
+                `UPDATE participaciones_evento
+                    SET cupones_acumulados = GREATEST(0, cupones_acumulados - $1)
+                  WHERE id = $2`,
+                [totalARevertir, participacionId],
+              );
+            }
+            await manager.delete(FacturaEntity, { id: In(ticketIds) });
+          });
+          this.logger.warn(
+            `[TICKETS] Rollback OK — evento: ${eventoId}, ticket: ${numeroTicket}, ` +
+            `revertidos ${cuponesARevertir + bonusARevertir} cupones`,
+          );
+        } catch (rollbackError) {
+          // La BD no pudo borrar los tickets. Quedan con fotoEstado='fallida'.
+          // El reintento del pendiente detectará el ticket existente y solo
+          // actualizará la foto sin reinsertar (ver procesarReintento).
+          const msgRb = rollbackError instanceof Error ? rollbackError.message : String(rollbackError);
+          this.logger.error(
+            `[TICKETS] Rollback FALLÓ — evento: ${eventoId}, ticket: ${numeroTicket}: ${msgRb}. ` +
+            `Tickets ${ticketIds.join(',')} marcados como 'fallida'. Pendiente id=${pendienteId ?? 'no guardado'}.`,
+          );
+          await this.facturasRepository
+            .update({ id: In(ticketIds) }, { fotoEstado: 'fallida' })
+            .catch(() => {});
+        }
+      }
+
+      await this.auditoriaService.registrar({
+        eventoTipo: 'TICKET_ROLLBACK',
+        entidad:    'tickets',
+        ipAddress,
+        datosNuevos: {
+          cedulaHash:        AuditoriaService.hashCedula(cedula),
+          eventoId,
+          numeroTicket,
+          error:             mensaje,
+          cuponesRevertidos: cuponesARevertir + bonusARevertir,
+          pendienteId,
+        },
+      }).catch(() => {});
     }
   }
 
@@ -476,9 +613,9 @@ export class FacturasService {
           cantidad: producto.cantidad,
           cuponesBase,
           cuponesGenerados,
-          // Bonus se almacena solo en la primera fila del registro; el resto queda null
           bonus: i === 0 && bonus ? bonus : null,
           fotoUrl,
+          fotoEstado: fotoUrl === FOTO_PROCESANDO_URL ? 'procesando' : 'completada',
           fotoHash,
           ocrData: null,
         });
@@ -528,6 +665,7 @@ export class FacturasService {
       multiplicadorAplicado: multiplicador,
       coeficienteAplicado: coeficiente,
       fotoUrl,
+      fotoEstado: fotoUrl === FOTO_PROCESANDO_URL ? 'procesando' : 'completada',
       productos: productosRegistrados,
       cuponesGenerados: totalCuponesGenerados,
       bonus,
@@ -555,6 +693,53 @@ export class FacturasService {
     let faseActual: FaseReintento = 'validacion';
 
     try {
+      // Verificar si existe un ticket con fotoEstado='fallida' para este número de ticket.
+      // Ocurre cuando el upload async falló Y el rollback también falló: los tickets
+      // quedaron en DB pero sin foto. En ese caso solo hay que subir la foto y actualizar.
+      const ticketsFallidos = await this.facturasRepository.find({
+        where: { eventoId: dto.eventoId, numeroTicket: dto.numeroTicket, fotoEstado: 'fallida' },
+      });
+
+      if (ticketsFallidos.length > 0) {
+        faseActual = 'upload_storage';
+
+        if (!pendiente.fotoBufferB64 && !pendiente.fotoUrl) {
+          faseActual = 'imagen_no_disponible';
+          throw AppException.badRequest(ERROR_CODES.IMAGE_MISSING);
+        }
+
+        let fotoUrl = pendiente.fotoUrl;
+        if (!fotoUrl) {
+          const dataUri = pendiente.fotoMimetype
+            ? `data:${pendiente.fotoMimetype};base64,${pendiente.fotoBufferB64}`
+            : pendiente.fotoBufferB64!;
+          const { url } = await this.cloudinaryService.uploadBase64(dataUri, dto.eventoId, dto.numeroTicket);
+          fotoUrl = url;
+        }
+
+        // Solo actualizar la foto — los tickets y cupones ya están en DB
+        faseActual = 'escritura_db';
+        await this.facturasRepository.update(
+          { id: In(ticketsFallidos.map((t) => t.id)) },
+          { fotoUrl, fotoEstado: 'completada' },
+        );
+
+        pendiente.estado = 'completado';
+        pendiente.mensajeError = null;
+        await this.pendientesRepository.save(pendiente);
+
+        this.logger.log(
+          `[PENDIENTES] Foto reparada id=${pendiente.id} — tickets ${ticketsFallidos.map((t) => t.id).join(',')} actualizados`,
+        );
+
+        return {
+          pendienteId: pendiente.id,
+          exitoso: true,
+          mensaje: 'Foto subida y tickets reparados correctamente.',
+        };
+      }
+
+      // Flujo normal: validar, subir imagen, insertar tickets en BD
       const contexto = await this.validarYPreparar(dto);
 
       faseActual = 'upload_storage';

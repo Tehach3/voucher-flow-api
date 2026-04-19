@@ -224,6 +224,44 @@ export class FacturasController {
     return await this.facturasService.reintentarTicketPendiente(id);
   }
 
+  // ── Estado de foto async ──────────────────────────────────────────────────
+
+  @Get(':cedula/foto-estado')
+  @ApiOperation({
+    summary: 'Consultar estado del upload de foto de un ticket',
+    description:
+      'El frontend llama a este endpoint después de recibir un `POST /api/tickets` con ' +
+      '`fotoEstado: "procesando"` para saber si el upload a Cloudinary terminó.\n\n' +
+      '**Estados posibles:**\n' +
+      '- `completada` — foto subida correctamente, `fotoUrl` disponible.\n' +
+      '- `procesando` — upload todavía en curso, reintentar en 3-5 segundos.\n' +
+      '- `fallida`    — upload falló y el rollback también falló; requiere intervención manual.\n' +
+      '- `no_encontrado` — el ticket fue eliminado por el rollback; el frontend debe reintentar el envío completo.\n\n' +
+      '**Flujo de reintento:** si el estado es `no_encontrado`, el ticket fue revertido porque ' +
+      'Cloudinary falló. El frontend puede re-enviar el mismo `POST /api/tickets` con los mismos ' +
+      'datos (el `numeroTicket` volvió a estar disponible).',
+  })
+  @ApiOkResponse({
+    description: 'Estado actual del upload de foto',
+    schema: {
+      example: {
+        numeroTicket: 'T-20260418-001',
+        eventoId: 1,
+        fotoEstado: 'completada',
+        fotoUrl: 'https://res.cloudinary.com/demo/image/upload/v1/tickets/foto.jpg',
+      },
+    },
+  })
+  @ApiQuery({ name: 'numeroTicket', required: true, description: 'Número de ticket a consultar' })
+  @ApiQuery({ name: 'eventoId',     required: true, type: Number })
+  async getFotoEstado(
+    @Param('cedula')           cedula: string,
+    @Query('numeroTicket')     numeroTicket: string,
+    @Query('eventoId', ParseIntPipe) eventoId: number,
+  ) {
+    return await this.facturasService.getFotoEstado(cedula, numeroTicket, eventoId);
+  }
+
   // ── Consultas ─────────────────────────────────────────────────────────────
 
   @Get(':cedula/cupones')

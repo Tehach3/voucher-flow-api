@@ -3,6 +3,21 @@ import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 export function getDatabaseConfig(): TypeOrmModuleOptions {
   const url = process.env.DATABASE_URL;
 
+  // Pool configurable desde env para poder ajustar sin redesplegar el código.
+  // Neon free tier admite ~107 conexiones totales; Railway free comparte CPU,
+  // por lo que 20 conexiones max es un balance seguro entre concurrencia y límite.
+  const poolMax     = parseInt(process.env.DATABASE_POOL_MAX     ?? '20', 10);
+  const poolMin     = parseInt(process.env.DATABASE_POOL_MIN     ?? '2',  10);
+  const poolIdle    = parseInt(process.env.DATABASE_POOL_IDLE_MS ?? '10000', 10);
+  const poolTimeout = parseInt(process.env.DATABASE_POOL_TIMEOUT_MS ?? '3000', 10);
+
+  const poolExtra = {
+    max: poolMax,
+    min: poolMin,
+    idleTimeoutMillis: poolIdle,
+    connectionTimeoutMillis: poolTimeout,
+  };
+
   if (url) {
     return {
       type: 'postgres',
@@ -17,11 +32,7 @@ export function getDatabaseConfig(): TypeOrmModuleOptions {
       ssl: { rejectUnauthorized: false },
       retryAttempts: 3,
       retryDelay: 2000,
-      extra: {
-        max: 10,
-        min: 2,
-        connectionTimeoutMillis: 5000,
-      },
+      extra: poolExtra,
     };
   }
 
@@ -43,11 +54,7 @@ export function getDatabaseConfig(): TypeOrmModuleOptions {
         : false,
     retryAttempts: 3,
     retryDelay: 2000,
-    extra: {
-      max: 10,
-      min: 2,
-      connectionTimeoutMillis: 5000,
-    },
+    extra: poolExtra,
   };
 }
 
