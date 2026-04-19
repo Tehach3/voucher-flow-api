@@ -42,6 +42,19 @@ export interface IEventoCreado {
   fechaRegistro: Date;
 }
 
+export interface ISkuEvento {
+  sku: string;
+  cuponesPorUnidad: number;
+}
+
+export interface ISkusEvento {
+  eventoId: number;
+  nombre: string;
+  estado: EstadoEvento;
+  tieneCondicionesMultiples: boolean;
+  skus: ISkuEvento[];
+}
+
 export interface EventosPaginados {
   data: IEventoPublico[];
   total: number;

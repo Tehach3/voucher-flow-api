@@ -77,6 +77,39 @@ export class EventosController {
     return this.eventosService.findAbiertos(filtros);
   }
 
+  @Get(':id/skus')
+  @ApiOperation({
+    summary: 'Obtener configuración de SKUs de un evento',
+    description:
+      'Devuelve únicamente los SKUs válidos y sus cupones por unidad para que el frontend pueda ' +
+      'construir el formulario de registro y calcular cupones antes de llamar a `POST /api/tickets`.\n\n' +
+      'Incluye `tieneCondicionesMultiples` para que el frontend sepa si debe manejar una sola ' +
+      'regla o reglas distintas por SKU, y el `estado` calculado del evento para validar si ' +
+      'aún acepta tickets.',
+  })
+  @ApiParam({ name: 'id', type: Number, example: 3 })
+  @ApiOkResponse({
+    description: 'Configuración de SKUs del evento',
+    schema: {
+      example: {
+        eventoId: 3,
+        nombre: 'Molinos (test) Mundial 2026',
+        estado: 'vigente',
+        tieneCondicionesMultiples: true,
+        skus: [
+          { sku: '250g', cuponesPorUnidad: 1 },
+          { sku: '500g', cuponesPorUnidad: 2 },
+          { sku: '1kg',  cuponesPorUnidad: 5 },
+          { sku: '5kg',  cuponesPorUnidad: 15 },
+        ],
+      },
+    },
+  })
+  @ApiNotFoundResponse({ description: 'Evento no encontrado' })
+  findSkusEvento(@Param('id', ParseIntPipe) id: number) {
+    return this.eventosService.findSkusEvento(id);
+  }
+
   @Get(':id')
   @ApiOperation({
     summary: 'Obtener evento por ID',

@@ -13,6 +13,7 @@ import {
   IEvento,
   IEventoCreado,
   IEventoPublico,
+  ISkusEvento,
   EventosPaginados,
 } from '../../common/interfaces/evento.interface';
 import { EstadoEvento } from './entities/evento.entity';
@@ -62,6 +63,27 @@ export class EventosService {
     const data = filtrados.slice((page - 1) * limit, page * limit);
 
     return { data, total, page, limit };
+  }
+
+  async findSkusEvento(id: number): Promise<ISkusEvento> {
+    const evento = await this.eventosRepository.findOne({ where: { id } });
+
+    if (!evento) {
+      throw AppException.notFound(ERROR_CODES.EVENTO_NOT_FOUND, { id });
+    }
+
+    const skus = (evento.condicionesCupones ?? []).map(({ sku, cuponesPorUnidad }) => ({
+      sku,
+      cuponesPorUnidad,
+    }));
+
+    return {
+      eventoId: evento.id,
+      nombre: evento.nombre,
+      estado: this.calcularEstado(evento),
+      tieneCondicionesMultiples: evento.tieneCondicionesMultiples,
+      skus,
+    };
   }
 
   async findById(id: number): Promise<IEvento> {

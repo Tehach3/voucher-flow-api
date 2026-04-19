@@ -98,11 +98,6 @@ export class InitialSchema1700000000000 implements MigrationInterface {
     await queryRunner.query(`CREATE INDEX IF NOT EXISTS idx_tickets_participante_evento  ON tickets (participante_id, evento_id)`);
     await queryRunner.query(`CREATE INDEX IF NOT EXISTS idx_tickets_fecha_carga          ON tickets (fecha_carga DESC)`);
     await queryRunner.query(`CREATE INDEX IF NOT EXISTS idx_tickets_evento_activo_fecha  ON tickets (evento_id, activo, fecha_carga DESC)`);
-    await queryRunner.query(`
-      CREATE INDEX IF NOT EXISTS idx_tickets_foto_estado_procesando
-        ON tickets (participante_id, evento_id, numero_ticket)
-        WHERE foto_estado = 'procesando'
-    `);
 
     // ── tickets_pendientes ───────────────────────────────────────────────────
     await queryRunner.query(`
